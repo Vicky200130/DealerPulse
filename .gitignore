@@ -1,0 +1,22 @@
+# dependencies
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# next.js
+.next/
+out/
+next-env.d.ts
+
+# vercel
+.vercel
+
+# misc
+.env*.local
+.DS_Store
+.venv
+.agents
+.claude
+skills-lock.json

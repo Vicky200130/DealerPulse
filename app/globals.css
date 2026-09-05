@@ -1,0 +1,142 @@
+/* Hallmark · design system · genre: modern-minimal
+ * theme: DealerPulse (custom · white paper · blue primary-500 accent · geometric-sans)
+ * tokens: OKLCH · light + dark · see design.md
+ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   DESIGN TOKENS — single source of truth (OKLCH).
+   Every colour, gap, radius, type step and motion value comes
+   from here. Light = clean white. Dark re-tunes the values; the
+   token NAMES (and all component classes) never change.
+   ============================================================ */
+:root {
+  /* fonts */
+  --font-display: 'Archivo';
+  --font-body: 'IBM Plex Sans';
+  --font-mono: 'IBM Plex Mono';
+
+  /* surfaces */
+  --bg: oklch(95.5% 0.006 255);
+  --surface: oklch(100% 0 0);
+  --surface-2: oklch(97.5% 0.004 255);
+  --border: oklch(89% 0.008 255);
+
+  /* text */
+  --text: oklch(24% 0.03 260);
+  --text-muted: oklch(47% 0.02 258);
+  --text-faint: oklch(64% 0.018 258);
+
+  /* primary ramp — 500 is THE actual primary (blue, hue 264) */
+  --primary-50: oklch(97% 0.02 264);
+  --primary-100: oklch(93% 0.045 264);
+  --primary-200: oklch(86% 0.09 264);
+  --primary-300: oklch(77% 0.145 264);
+  --primary-400: oklch(66% 0.19 264);
+  --primary-500: oklch(56% 0.225 264);
+  --primary-600: oklch(50% 0.215 264);
+  --primary-700: oklch(43% 0.18 264);
+  --primary-800: oklch(37% 0.15 264);
+  --primary-900: oklch(31% 0.11 264);
+  --primary-fg: oklch(100% 0 0);
+
+  /* semantic */
+  --success: oklch(53% 0.12 162);   --success-soft: oklch(94% 0.03 162);
+  --warning: oklch(56% 0.11 75);    --warning-soft: oklch(94% 0.04 82);
+  --danger: oklch(54% 0.17 27);     --danger-soft: oklch(92% 0.045 30);
+
+  /* chart series palette */
+  --chart-1: oklch(56% 0.225 264);
+  --chart-2: oklch(64% 0.11 185);
+  --chart-3: oklch(62% 0.11 75);
+  --chart-4: oklch(58% 0.19 288);
+  --chart-5: oklch(54% 0.17 27);
+  --chart-6: oklch(52% 0.02 258);
+
+  /* 4pt spacing scale */
+  --space-3xs: 2px;  --space-2xs: 4px;  --space-xs: 8px;   --space-sm: 12px;
+  --space-md: 16px;  --space-lg: 24px;  --space-xl: 32px;  --space-2xl: 48px;
+  --space-3xl: 64px; --space-4xl: 96px;
+  --card-pad: var(--space-md);
+  --card-gap: var(--space-md);
+  --section-gap: var(--space-lg);
+
+  /* type scale (rem) */
+  --text-xs: 0.6875rem;   --text-sm: 0.75rem;    --text-base: 0.875rem;
+  --text-md: 1rem;        --text-lg: 1.125rem;   --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;    --text-3xl: 2.25rem;   --text-display: 3rem;
+
+  /* shape */
+  --radius: 12px; --radius-sm: 8px; --radius-lg: 16px; --radius-pill: 999px;
+
+  /* motion */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast: 140ms; --dur-base: 220ms; --dur-slow: 340ms;
+}
+
+/* Dark theme — same token names, values re-tuned.
+   In the primary ramp, the step number keeps its ROLE
+   (100 = soft background, 500 = primary, 700 = strong text). */
+:root[data-theme='dark'] {
+  --bg: oklch(16% 0.014 260);
+  --surface: oklch(22% 0.02 258);
+  --surface-2: oklch(18.5% 0.018 258);
+  --border: oklch(32% 0.02 256);
+
+  --text: oklch(94% 0.008 255);
+  --text-muted: oklch(72% 0.02 256);
+  --text-faint: oklch(56% 0.02 256);
+
+  --primary-50: oklch(22% 0.03 264);
+  --primary-100: oklch(26% 0.05 264);
+  --primary-200: oklch(33% 0.08 264);
+  --primary-300: oklch(43% 0.11 264);
+  --primary-400: oklch(60% 0.19 264);
+  --primary-500: oklch(66% 0.19 264);
+  --primary-600: oklch(74% 0.16 264);
+  --primary-700: oklch(82% 0.12 264);
+  --primary-800: oklch(89% 0.08 264);
+  --primary-900: oklch(95% 0.04 264);
+  --primary-fg: oklch(16% 0.014 260);
+
+  --success: oklch(74% 0.13 165);   --success-soft: oklch(27% 0.05 165);
+  --warning: oklch(76% 0.11 78);    --warning-soft: oklch(27% 0.04 78);
+  --danger: oklch(68% 0.15 30);     --danger-soft: oklch(27% 0.05 30);
+
+  --chart-1: oklch(66% 0.19 264);
+  --chart-2: oklch(78% 0.13 182);
+  --chart-3: oklch(78% 0.12 80);
+  --chart-4: oklch(72% 0.15 290);
+  --chart-5: oklch(68% 0.15 30);
+  --chart-6: oklch(66% 0.02 256);
+}
+
+@layer base {
+  html, body { overflow-x: clip; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body), system-ui, sans-serif;
+    font-size: var(--text-base);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4 {
+    font-family: var(--font-display), system-ui, sans-serif;
+  }
+  :focus-visible {
+    outline: 2px solid var(--primary-500);
+    outline-offset: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
