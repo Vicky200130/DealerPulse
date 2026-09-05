@@ -1,19 +1,19 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { Sidebar } from '@/components/Sidebar';
+import { MobileNav } from '@/components/MobileNav';
+import { NO_FLASH_SCRIPT } from '@/lib/theme';
 
 export const metadata: Metadata = {
   title: 'DealerPulse',
   description: 'Real-time performance dashboard for automotive dealership networks.',
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: NO_FLASH_SCRIPT }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
@@ -21,7 +21,15 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <div className="flex min-h-screen">
+          <Sidebar />
+          <main className="min-w-0 flex-1">
+            <MobileNav />
+            {children}
+          </main>
+        </div>
+      </body>
     </html>
   );
 }

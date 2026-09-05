@@ -29,6 +29,12 @@
   --text-muted: oklch(47% 0.02 258);
   --text-faint: oklch(64% 0.018 258);
 
+  /* sidebar (fixed brand rail — dark in both themes) */
+  --sidebar-bg: oklch(24% 0.03 260);
+  --sidebar-fg: oklch(96% 0.005 255);
+  --sidebar-muted: oklch(70% 0.02 256);
+  --sidebar-active: oklch(31% 0.04 262);
+
   /* primary ramp — 500 is THE actual primary (blue, hue 264) */
   --primary-50: oklch(97% 0.02 264);
   --primary-100: oklch(93% 0.045 264);
@@ -90,6 +96,11 @@
   --text: oklch(94% 0.008 255);
   --text-muted: oklch(72% 0.02 256);
   --text-faint: oklch(56% 0.02 256);
+
+  --sidebar-bg: oklch(13% 0.012 260);
+  --sidebar-fg: oklch(94% 0.008 255);
+  --sidebar-muted: oklch(60% 0.02 256);
+  --sidebar-active: oklch(24% 0.02 258);
 
   --primary-50: oklch(22% 0.03 264);
   --primary-100: oklch(26% 0.05 264);
