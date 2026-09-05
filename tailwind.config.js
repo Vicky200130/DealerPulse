@@ -18,12 +18,14 @@ module.exports = {
         text: 'var(--text)',
         muted: 'var(--text-muted)',
         faint: 'var(--text-faint)',
-        // sidebar (fixed brand rail)
+        // sidebar (theme-aware rail)
         sidebar: {
           DEFAULT: 'var(--sidebar-bg)',
           fg: 'var(--sidebar-fg)',
           muted: 'var(--sidebar-muted)',
           active: 'var(--sidebar-active)',
+          hover: 'var(--sidebar-hover)',
+          border: 'var(--sidebar-border)',
         },
         // brand — full numbered ramp, 500 is the true primary
         primary: {

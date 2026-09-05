@@ -1,7 +1,7 @@
 """Delivery operations (delays) and model demand/mix."""
 from collections import Counter, defaultdict
 
-from .loader import scope_deliveries, scope_leads
+from .loader import LEAD_BY_ID, branch_name, scope_deliveries, scope_leads
 
 
 def _avg(xs: list) -> float:
@@ -26,16 +26,29 @@ def delivery_analysis(branch=None, dfrom=None, dto=None) -> dict:
 
 
 def model_mix(branch=None, dfrom=None, dto=None) -> list:
+    """Per model: demand (leads created in range) plus actual deliveries in range.
+
+    `delivered`/`revenue`/`by_branch` are DELIVERY-date based — matching the
+    headline "Cars delivered" KPI and the monthly trend — so all three delivery
+    views agree for any window (previously this counted the created-lead cohort,
+    which diverged on custom ranges). `leads` stays the created-cohort demand.
+    """
     leads = scope_leads(branch, dfrom, dto)
-    stats = defaultdict(lambda: {"leads": 0, "delivered": 0, "revenue": 0, "values": []})
+    dels = scope_deliveries(branch, dfrom, dto)
+    stats = defaultdict(lambda: {"leads": 0, "delivered": 0, "revenue": 0, "values": [], "by_branch": defaultdict(int)})
     for l in leads:
         s = stats[l["model_interested"]]
         s["leads"] += 1
         if l.get("deal_value"):
             s["values"].append(l["deal_value"])
-        if l["status"] == "delivered":
-            s["delivered"] += 1
-            s["revenue"] += l.get("deal_value", 0)
+    for d in dels:
+        lead = LEAD_BY_ID.get(d["lead_id"])
+        if not lead:
+            continue
+        s = stats[lead["model_interested"]]
+        s["delivered"] += 1
+        s["revenue"] += lead.get("deal_value", 0)
+        s["by_branch"][lead["branch_id"]] += 1
     rows = []
     for model, s in stats.items():
         avg = round(sum(s["values"]) / len(s["values"])) if s["values"] else 0
@@ -45,6 +58,10 @@ def model_mix(branch=None, dfrom=None, dto=None) -> list:
             "delivered": s["delivered"],
             "avg_price": avg,
             "revenue": s["revenue"],
+            "by_branch": sorted(
+                ({"branch": branch_name(bid), "count": c} for bid, c in s["by_branch"].items()),
+                key=lambda x: -x["count"],
+            ),
         })
     rows.sort(key=lambda r: -r["leads"])
     return rows

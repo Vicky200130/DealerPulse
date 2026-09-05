@@ -2,10 +2,12 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { ArrowUpRight } from 'lucide-react';
 import { useApi } from '@/lib/useApi';
 import { formatINR } from '@/lib/format';
 import type { LeaderRow } from '@/types';
 import { PageHeader } from '@/components/PageHeader';
+import { TimeRange, appendRange, type RangeKey } from '@/components/TimeRange';
 import { Card } from '@/components/ui/Card';
 import { DataTable } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
@@ -17,12 +19,14 @@ type Metric = 'revenue' | 'delivered' | 'avg_deal';
 
 export default function RepsPage() {
   const [metric, setMetric] = useState<Metric>('revenue');
-  const { data, error, loading } = useApi<LeaderRow[]>('/reps');
+  const [range, setRange] = useState<RangeKey>('all');
+  const { data, error, loading } = useApi<LeaderRow[]>(appendRange('/reps', range));
   const rows = data ? [...data].sort((a, b) => (b[metric] as number) - (a[metric] as number)) : [];
 
   return (
     <>
-      <PageHeader title="Sales Reps" crumb="Toyota Dealer Group">
+      <PageHeader title="Sales Reps" subtitle="30 reps across 5 branches">
+        <TimeRange value={range} onChange={setRange} />
         <Segmented<Metric>
           value={metric}
           onChange={setMetric}
@@ -43,6 +47,7 @@ export default function RepsPage() {
             <DataTable<LeaderRow>
               rows={rows}
               getKey={(r) => r.id}
+              rowHref={(r) => `/reps/${r.id}`}
               columns={[
                 { key: 'rank', header: '#', render: (r) => <span className="font-mono text-faint">{rows.indexOf(r) + 1}</span> },
                 {
@@ -71,6 +76,20 @@ export default function RepsPage() {
                     ),
                 },
                 { key: 'revenue', header: 'Revenue', align: 'right', sortable: true, sortValue: (r) => r.revenue, render: (r) => <span className="font-mono font-semibold">{formatINR(r.revenue)}</span> },
+                {
+                  key: 'go',
+                  header: '',
+                  align: 'right',
+                  render: (r) => (
+                    <Link
+                      href={`/reps/${r.id}`}
+                      aria-label={`View ${r.name}`}
+                      className="flex justify-end text-primary opacity-0 transition-all duration-fast group-hover:translate-x-0.5 group-hover:opacity-100"
+                    >
+                      <ArrowUpRight size={16} />
+                    </Link>
+                  ),
+                },
               ]}
             />
           )}

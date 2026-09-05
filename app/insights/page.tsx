@@ -6,6 +6,8 @@ import { useApi } from '@/lib/useApi';
 import { formatINR, pct } from '@/lib/format';
 import type { InsightsResp, WhatIf } from '@/types';
 import { PageHeader } from '@/components/PageHeader';
+import { BranchFilter } from '@/components/BranchFilter';
+import { TimeRange, appendBranch, appendRange, type RangeKey } from '@/components/TimeRange';
 import { Card } from '@/components/ui/Card';
 import { ReasonBars } from '@/components/ReasonBars';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -21,13 +23,18 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 export default function InsightsPage() {
-  const { data, error, loading } = useApi<InsightsResp>('/insights');
+  const [range, setRange] = useState<RangeKey>('all');
+  const [branch, setBranch] = useState('');
+  const { data, error, loading } = useApi<InsightsResp>(appendBranch(appendRange('/insights', range), branch));
   const [lift, setLift] = useState(10);
-  const { data: wi } = useApi<WhatIf>(`/whatif?lift=${lift}`);
+  const { data: wi } = useApi<WhatIf>(appendBranch(appendRange(`/whatif?lift=${lift}`, range), branch));
 
   return (
     <>
-      <PageHeader title="Insights & Actions" crumb="Toyota Dealer Group" />
+      <PageHeader title="Insights & Actions" subtitle="What the numbers say, and what to do">
+        <BranchFilter value={branch} onChange={setBranch} />
+        <TimeRange value={range} onChange={setRange} />
+      </PageHeader>
 
       <div className="p-lg flex flex-col gap-lg">
         {error && <ErrorState error={error} />}
@@ -38,7 +45,7 @@ export default function InsightsPage() {
               <Sparkles size={15} />
             </span>
             <h3 className="text-sm font-bold">This period at a glance</h3>
-            <span className="ml-auto rounded-sm border border-primary px-1.5 py-0.5 text-[9.5px] font-mono uppercase tracking-wide text-primary">
+            <span className="ml-auto rounded-sm border border-primary px-1.5 py-0.5 text-[11px] font-mono uppercase tracking-wide text-primary">
               Auto-summary
             </span>
           </div>
@@ -47,7 +54,7 @@ export default function InsightsPage() {
           ) : (
             <div className="flex flex-col gap-2">
               {data.summary.paragraphs.map((p, i) => (
-                <p key={i} className="text-[13px] leading-relaxed text-text">
+                <p key={i} style={{ animationDelay: `${i * 70}ms` }} className="dp-rise text-[14px] leading-relaxed text-text">
                   {p}
                 </p>
               ))}
@@ -85,7 +92,7 @@ export default function InsightsPage() {
           ) : (
             <div className="grid gap-lg md:grid-cols-2">
               <div>
-                <div className="text-[13px] text-muted">
+                <div className="text-[14px] text-muted">
                   If <b className="text-text">test-drive → order</b> conversion improves by{' '}
                   <b className="text-primary">+{lift} points</b> ({pct(wi.current_rate)} → {pct(wi.projected_rate)})
                 </div>
@@ -98,7 +105,7 @@ export default function InsightsPage() {
                   className="mt-4 w-full"
                   style={{ accentColor: 'var(--primary-500)' }}
                 />
-                <div className="flex justify-between font-mono text-[10.5px] text-faint">
+                <div className="flex justify-between font-mono text-[12px] text-faint">
                   <span>0%</span>
                   <span>+{lift}%</span>
                   <span>+25%</span>
@@ -107,7 +114,7 @@ export default function InsightsPage() {
                   <span className="font-mono text-[30px] font-semibold leading-none text-success">
                     +{formatINR(wi.additional_revenue)}
                   </span>
-                  <span className="text-[13px] font-semibold text-muted">≈ +{wi.additional_orders} more cars</span>
+                  <span className="text-[14px] font-semibold text-muted">≈ +{wi.additional_orders} more cars</span>
                 </div>
               </div>
               <div>

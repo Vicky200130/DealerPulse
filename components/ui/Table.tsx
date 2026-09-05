@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/cn';
 
 export interface Column<T> {
@@ -17,12 +18,16 @@ export function DataTable<T>({
   rows,
   getKey,
   empty,
+  rowHref,
 }: {
   columns: Column<T>[];
   rows: T[];
   getKey: (row: T, i: number) => string;
   empty?: React.ReactNode;
+  /** When set, the whole row is clickable and navigates here. */
+  rowHref?: (row: T) => string;
 }) {
+  const router = useRouter();
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
 
   let data = rows;
@@ -80,7 +85,23 @@ export function DataTable<T>({
           {data.map((row, i) => (
             <tr
               key={getKey(row, i)}
-              className="border-b border-border last:border-0 hover:bg-surface-2 transition-colors duration-fast"
+              // Staggered reveal, matching the Overview's list rows. Capped so a
+              // 30-row leaderboard doesn't take a second to finish appearing.
+              style={{ animationDelay: `${Math.min(i, 12) * 35}ms` }}
+              // Whole-row navigation when rowHref is set. Clicks landing on an
+              // inner link (name, arrow) are left to that link — no double push.
+              onClick={
+                rowHref
+                  ? (e) => {
+                      if ((e.target as HTMLElement).closest('a')) return;
+                      router.push(rowHref(row));
+                    }
+                  : undefined
+              }
+              className={cn(
+                'group dp-rise border-b border-border last:border-0 hover:bg-surface-2 transition-colors duration-fast',
+                rowHref && 'cursor-pointer',
+              )}
             >
               {columns.map((c) => (
                 <td

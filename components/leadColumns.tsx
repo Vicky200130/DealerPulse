@@ -11,7 +11,7 @@ function NextAction({ label }: { label: string }) {
   return (
     <span
       className={
-        'inline-block rounded-sm px-2 py-1 text-[11px] font-semibold whitespace-nowrap ' +
+        'inline-block rounded-sm px-2 py-1 text-[12px] font-semibold whitespace-nowrap ' +
         (urgent ? 'bg-danger-soft text-danger' : 'bg-primary-100 text-primary-700')
       }
     >

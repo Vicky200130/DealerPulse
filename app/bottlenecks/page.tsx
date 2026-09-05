@@ -6,6 +6,8 @@ import { useApi } from '@/lib/useApi';
 import { formatINR } from '@/lib/format';
 import type { Bottleneck, BottleneckResult } from '@/types';
 import { PageHeader } from '@/components/PageHeader';
+import { BranchFilter } from '@/components/BranchFilter';
+import { TimeRange, appendBranch, appendRange, type RangeKey } from '@/components/TimeRange';
 import { Card } from '@/components/ui/Card';
 import { DataTable } from '@/components/ui/Table';
 import { Segmented } from '@/components/ui/Segmented';
@@ -20,7 +22,9 @@ type Idle = '1' | '3' | '7' | '14';
 export default function BottlenecksPage() {
   const [idle, setIdle] = useState<Idle>('7');
   const [q, setQ] = useState('');
-  const { data, error, loading } = useApi<BottleneckResult>(`/bottlenecks?idle=${idle}`);
+  const [range, setRange] = useState<RangeKey>('all');
+  const [branch, setBranch] = useState('');
+  const { data, error, loading } = useApi<BottleneckResult>(appendBranch(appendRange(`/bottlenecks?idle=${idle}`, range), branch));
 
   const rows = useMemo(() => {
     if (!data) return [];
@@ -44,7 +48,9 @@ export default function BottlenecksPage() {
 
   return (
     <>
-      <PageHeader title="Actionable Bottlenecks" crumb="Toyota Dealer Group">
+      <PageHeader title="Actionable Bottlenecks" subtitle="Stuck deals that need action">
+        <BranchFilter value={branch} onChange={setBranch} />
+        <TimeRange value={range} onChange={setRange} />
         <Button onClick={exportCSV} disabled={!rows.length}>
           <Download size={13} />
           Export CSV
@@ -55,7 +61,7 @@ export default function BottlenecksPage() {
         {error && <ErrorState error={error} />}
 
         {data && (
-          <div className="flex flex-wrap items-center gap-2.5 rounded-sm bg-danger-soft px-3.5 py-2.5 text-[12.5px]">
+          <div className="flex flex-wrap items-center gap-2.5 rounded-sm bg-danger-soft px-3.5 py-2.5 text-[13px]">
             <span className="font-mono font-semibold text-danger">{data.count}</span> deals idle {idle}+ days
             <span className="text-danger/40">·</span>
             <span className="font-mono font-semibold text-danger">{formatINR(data.value_at_risk)}</span> capital at risk

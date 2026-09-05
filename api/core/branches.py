@@ -1,45 +1,96 @@
 """Branch- and rep-level aggregations and drill-down details."""
+from calendar import monthrange
 from collections import defaultdict
+from datetime import date
 from typing import Optional
 
 from . import metrics, bottlenecks
 from .loader import (
-    BRANCHES, TARGETS, OPEN_STATUSES, REP_BY_ID,
-    branch_name, scope_leads, scope_deliveries, idle_days,
+    BRANCHES, TARGETS, OPEN_STATUSES, REP_BY_ID, LEAD_BY_ID,
+    branch_name, branch_manager, scope_leads, scope_deliveries, idle_days,
 )
 
 
-def _target_units(bid: str) -> int:
-    return sum(t["target_units"] for t in TARGETS if t["branch_id"] == bid)
+def _target_units(bid: str, dfrom: Optional[date] = None, dto: Optional[date] = None) -> int:
+    """Branch target units within [dfrom, dto], pro-rating partial months.
+
+    Targets are set per calendar month, which doesn't divide cleanly into
+    weeks. For a window that only partly covers a month we count the fraction
+    of that month inside the window; full months (and the unfiltered all-time
+    view) reduce to an exact sum. Without this, the denominator was always the
+    full 7-month target while "delivered" was scoped — so every attainment %
+    was apples-to-oranges.
+    """
+    total = 0.0
+    for t in TARGETS:
+        if t["branch_id"] != bid:
+            continue
+        if dfrom is None and dto is None:
+            total += t["target_units"]
+            continue
+        y, m = (int(x) for x in t["month"].split("-"))
+        m_start = date(y, m, 1)
+        m_end = date(y, m, monthrange(y, m)[1])
+        lo = max(m_start, dfrom) if dfrom else m_start
+        hi = min(m_end, dto) if dto else m_end
+        if lo > hi:
+            continue  # no overlap with this month
+        overlap = (hi - lo).days + 1
+        month_days = (m_end - m_start).days + 1
+        total += t["target_units"] * overlap / month_days
+    return round(total)
 
 
-def _status_tier(attainment: float) -> str:
-    if attainment < 0.05:
-        return "critical"
-    if attainment < 0.8:
-        return "warning"
-    return "good"
+def _status_tier(attainment: float, group_avg: float) -> str:
+    """Rate a branch against the GROUP's pace, not the paper target.
+
+    In this dataset the unit targets run 2-4x above actual delivery pace, so
+    even a correctly-scoped absolute % paints every branch red. Comparing each
+    branch to the group's own pace answers the question a manager actually
+    asks — who is ahead, and who needs help.
+    """
+    if group_avg <= 0:
+        return "on_pace"
+    ratio = attainment / group_avg
+    if ratio >= 1.15:
+        return "leading"
+    if ratio < 0.6:
+        return "behind"
+    return "on_pace"
 
 
 def branch_health(dfrom=None, dto=None) -> list:
     rows = []
+    total_delivered = 0
+    total_target = 0
     for b in BRANCHES:
         leads = scope_leads(b["id"], dfrom, dto)
-        delivered = [l for l in leads if l["status"] == "delivered"]
-        target = _target_units(b["id"])
-        attainment = len(delivered) / target if target else 0
+        # Delivered/revenue are delivery-date based (matches the headline KPIs);
+        # conversion/cold are lead-cohort based.
+        dels = scope_deliveries(b["id"], dfrom, dto)
+        delivered = len(dels)
+        revenue = sum(
+            LEAD_BY_ID[d["lead_id"]].get("deal_value", 0)
+            for d in dels if d["lead_id"] in LEAD_BY_ID
+        )
+        target = _target_units(b["id"], dfrom, dto)
+        total_delivered += delivered
+        total_target += target
         open_leads = [l for l in leads if l["status"] in OPEN_STATUSES]
         cold = [l for l in open_leads if idle_days(l) >= 7]
         rows.append({
             "id": b["id"], "name": b["name"], "city": b["city"],
-            "delivered": len(delivered),
+            "manager": branch_manager(b["id"]),
+            "delivered": delivered,
             "target_units": target,
-            "attainment": round(attainment, 4),
+            "attainment": round(delivered / target, 4) if target else 0,
             "conversion": metrics.conversion(leads),
             "cold_leads": len(cold),
-            "revenue": sum(l.get("deal_value", 0) for l in delivered),
-            "status": _status_tier(attainment),
+            "revenue": revenue,
         })
+    group_avg = (total_delivered / total_target) if total_target else 0
+    for r in rows:
+        r["status"] = _status_tier(r["attainment"], group_avg)
     rows.sort(key=lambda r: -r["attainment"])
     return rows
 
@@ -73,14 +124,15 @@ def branch_detail(bid: str, dfrom=None, dto=None) -> Optional[dict]:
     leads = scope_leads(bid, dfrom, dto)
     dels = scope_deliveries(bid, dfrom, dto)
     k = metrics.kpis(leads, dels)
-    target = _target_units(bid)
+    target = _target_units(bid, dfrom, dto)
     k["target_units"] = target
     k["attainment"] = round(k["cars_delivered"] / target, 4) if target else 0
     cold = bottlenecks.bottlenecks(leads, idle_min=7)
     return {
         "id": b["id"], "name": b["name"], "city": b["city"],
+        "manager": branch_manager(b["id"]),
         "kpis": k,
-        "funnel": metrics.funnel(leads),
+        "funnel": metrics.funnel(leads, group_by="rep"),
         "reps": branch_reps(bid, dfrom, dto),
         "cold_leads": cold["rows"],
         "group_conversion": metrics.conversion(scope_leads(None, dfrom, dto)),

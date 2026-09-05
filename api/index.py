@@ -8,6 +8,7 @@ Common query params:
   branch  — restrict to one branch id (e.g. B3)
   from,to — ISO dates (YYYY-MM-DD) to slice the time range
 """
+from datetime import timedelta
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query
@@ -53,12 +54,48 @@ def overview(
     dfrom, dto = _d(date_from), _d(to)
     leads = loader.scope_leads(branch, dfrom, dto)
     dels = loader.scope_deliveries(branch, dfrom, dto)
+    k = metrics.kpis(leads, dels)
     return {
-        "kpis": metrics.kpis(leads, dels),
+        "kpis": k,
+        "deltas": _period_deltas(k, branch, dfrom, dto),
         "funnel": metrics.funnel(leads),
         "speed_to_lead": metrics.speed_to_lead(leads),
         "monthly": metrics.monthly_deliveries(dels),
         "branch_health": branches.branch_health(dfrom, dto),
+        "lost_reasons": insights.lost_reasons(leads),
+        "model_mix": deliv.model_mix(branch, dfrom, dto),
+        "source_quality": insights.source_quality(leads),
+    }
+
+
+def _period_deltas(cur: dict, branch, dfrom, dto):
+    """Relative change vs the previous equal-length window.
+
+    Returns None when no window is selected, or when the previous window would
+    run off the front of the dataset — so we never compare against a period
+    that is really just missing data.
+    """
+    if not (dfrom and dto):
+        return None
+    length = (dto - dfrom).days + 1
+    p_to = dfrom - timedelta(days=1)
+    p_from = p_to - timedelta(days=length - 1)
+    if p_from < loader.DATA_START:
+        return None
+    p_leads = loader.scope_leads(branch, p_from, p_to)
+    p_dels = loader.scope_deliveries(branch, p_from, p_to)
+    prev = metrics.kpis(p_leads, p_dels)
+
+    def rel(key):
+        c, p = cur[key], prev[key]
+        return round((c - p) / p, 4) if p else None
+
+    # Only delivery-based metrics get a delta — they're robust for any window.
+    # Conversion is a lead-cohort metric that swings wildly on short/recent
+    # windows (Dec leads haven't matured), so we deliberately omit it.
+    return {
+        "revenue_booked": rel("revenue_booked"),
+        "cars_delivered": rel("cars_delivered"),
     }
 
 
@@ -145,5 +182,10 @@ def insights_ep(
 
 
 @app.get("/api/whatif")
-def whatif_ep(lift: float = 10, branch: Optional[str] = None):
-    return whatif.simulate(lift, branch)
+def whatif_ep(
+    lift: float = 10,
+    branch: Optional[str] = None,
+    date_from: Optional[str] = Query(None, alias="from"),
+    to: Optional[str] = None,
+):
+    return whatif.simulate(lift, branch, _d(date_from), _d(to))

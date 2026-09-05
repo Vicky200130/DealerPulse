@@ -23,6 +23,8 @@ BRANCH_BY_ID = {b["id"]: b for b in BRANCHES}
 REP_BY_ID = {r["id"]: r for r in REPS}
 LEAD_BY_ID = {l["id"]: l for l in LEADS}
 DELIVERY_BY_LEAD = {d["lead_id"]: d for d in DELIVERIES}
+# One branch manager per branch — used to attribute each branch to a person.
+MANAGER_BY_BRANCH = {r["branch_id"]: r["name"] for r in REPS if r.get("role") == "branch_manager"}
 
 # Pipeline stages in order (excludes the terminal "lost" state).
 STAGES = ["new", "contacted", "test_drive", "negotiation", "order_placed", "delivered"]
@@ -48,10 +50,17 @@ def parse_date(s: Optional[str]) -> Optional[date]:
 
 # "now" = the latest recorded activity across all leads.
 NOW = max(parse_dt(l["last_activity_at"]) for l in LEADS)
+# Earliest lead — used to decide whether a "previous period" is real data or
+# runs off the front of the dataset (so KPI deltas stay honest).
+DATA_START = min(parse_date(l["created_at"]) for l in LEADS)
 
 
 def branch_name(bid: str) -> str:
     return BRANCH_BY_ID.get(bid, {}).get("name", bid)
+
+
+def branch_manager(bid: str) -> str:
+    return MANAGER_BY_BRANCH.get(bid, "")
 
 
 def idle_days(lead: dict) -> int:

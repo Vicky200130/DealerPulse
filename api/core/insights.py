@@ -2,6 +2,7 @@
 from collections import Counter, defaultdict
 
 from . import metrics
+from .loader import branch_name
 
 
 def _cr(value: float) -> str:
@@ -15,9 +16,10 @@ def lost_reasons(leads: list) -> list:
 
 
 def source_quality(leads: list) -> list:
-    d = defaultdict(lambda: {"leads": 0, "delivered": 0})
+    d = defaultdict(lambda: {"leads": 0, "delivered": 0, "by_branch": defaultdict(int)})
     for l in leads:
         d[l["source"]]["leads"] += 1
+        d[l["source"]]["by_branch"][l["branch_id"]] += 1  # which branch this lead came into
         if l["status"] == "delivered":
             d[l["source"]]["delivered"] += 1
     rows = [{
@@ -25,6 +27,10 @@ def source_quality(leads: list) -> list:
         "leads": v["leads"],
         "delivered": v["delivered"],
         "rate": round(v["delivered"] / v["leads"], 4) if v["leads"] else 0,
+        "by_branch": sorted(
+            ({"branch": branch_name(bid), "count": c} for bid, c in v["by_branch"].items()),
+            key=lambda x: -x["count"],
+        ),
     } for s, v in d.items()]
     rows.sort(key=lambda r: -r["rate"])
     return rows

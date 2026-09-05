@@ -2,6 +2,10 @@
 
 export type Severity = 'good' | 'warning' | 'critical';
 
+// Branch status is relative to the group's pace (targets are aspirational),
+// so it reads as a ranking, not a pass/fail against target.
+export type BranchStatus = 'leading' | 'on_pace' | 'behind';
+
 export interface Health {
   status: string;
   branches: number;
@@ -16,12 +20,18 @@ export interface KPIs {
   revenue_booked: number;
   cars_delivered: number;
   total_leads: number;
+  won_leads: number;
   conversion: number;
   win_rate: number;
   lost: number;
+  lost_value: number;
   open_leads: number;
   cold_leads: number;
   cold_value: number;
+  awaiting_leads: number;
+  awaiting_value: number;
+  committed_leads: number;
+  committed_value: number;
   avg_delivery_days: number;
   pipeline_value: number;
   attainment?: number;
@@ -32,6 +42,8 @@ export interface FunnelStep {
   stage: string;
   count: number;
   drop: number | null;
+  by_branch?: { branch: string; count: number }[];
+  by_rep?: { rep: string; count: number }[];
 }
 
 export interface SpeedToLead {
@@ -44,27 +56,39 @@ export interface SpeedToLead {
 export interface MonthPoint {
   month: string;
   delivered: number;
+  revenue: number;
+  by_branch?: { branch: string; count: number; revenue: number }[];
 }
 
 export interface BranchHealth {
   id: string;
   name: string;
   city: string;
+  manager: string;
   delivered: number;
   target_units: number;
   attainment: number;
   conversion: number;
   cold_leads: number;
   revenue: number;
-  status: Severity;
+  status: BranchStatus;
+}
+
+export interface PeriodDeltas {
+  revenue_booked: number | null;
+  cars_delivered: number | null;
 }
 
 export interface Overview {
   kpis: KPIs;
+  deltas: PeriodDeltas | null;
   funnel: FunnelStep[];
   speed_to_lead: SpeedToLead;
   monthly: MonthPoint[];
   branch_health: BranchHealth[];
+  lost_reasons: LostReason[];
+  model_mix: ModelRow[];
+  source_quality: SourceQuality[];
 }
 
 export interface RepRow {
@@ -95,6 +119,7 @@ export interface BranchDetail {
   id: string;
   name: string;
   city: string;
+  manager: string;
   kpis: KPIs;
   funnel: FunnelStep[];
   reps: RepRow[];
@@ -159,6 +184,7 @@ export interface ModelRow {
   delivered: number;
   avg_price: number;
   revenue: number;
+  by_branch?: { branch: string; count: number }[];
 }
 
 export interface DeliveriesResp {
@@ -176,6 +202,7 @@ export interface SourceQuality {
   leads: number;
   delivered: number;
   rate: number;
+  by_branch?: { branch: string; count: number }[];
 }
 
 export interface InsightsResp {

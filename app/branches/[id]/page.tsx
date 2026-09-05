@@ -1,25 +1,32 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { ArrowUpRight, Car, Gauge, IndianRupee, MapPin, Target, User } from 'lucide-react';
 import { useApi } from '@/lib/useApi';
 import { formatINR, pct } from '@/lib/format';
 import type { BranchDetail, BranchHealth, Bottleneck, RepRow } from '@/types';
 import { PageHeader } from '@/components/PageHeader';
+import { TimeRange, appendRange, type RangeKey } from '@/components/TimeRange';
 import { KpiCard } from '@/components/KpiCard';
+import { CountUp } from '@/components/CountUp';
 import { Card } from '@/components/ui/Card';
 import { Funnel } from '@/components/Funnel';
 import { DataTable } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
-import { Select } from '@/components/ui/Select';
+import { Dropdown } from '@/components/ui/Dropdown';
 import { bottleneckColumns } from '@/components/leadColumns';
 import { CardSkeleton, Skeleton } from '@/components/ui/Skeleton';
 import { ErrorState } from '@/components/ui/EmptyState';
 
+const intFmt = (n: number) => String(Math.round(n));
+
 export default function BranchPage({ params }: { params: { id: string } }) {
   const router = useRouter();
+  const [range, setRange] = useState<RangeKey>('all');
   const id = params.id.toUpperCase();
-  const { data, error, loading } = useApi<BranchDetail>(`/branches/${id}`);
+  const { data, error, loading } = useApi<BranchDetail>(appendRange(`/branches/${id}`, range));
   const { data: branches } = useApi<BranchHealth[]>('/branches');
 
   const contactStep = data?.funnel.find((f) => f.stage === 'contacted');
@@ -28,7 +35,23 @@ export default function BranchPage({ params }: { params: { id: string } }) {
   return (
     <>
       <PageHeader
-        title={data ? `${data.name} · ${data.city}` : 'Branch'}
+        title={data ? data.name : 'Branch'}
+        subtitle={
+          data ? (
+            <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-0.5">
+              <span className="inline-flex items-center gap-1.5">
+                <MapPin size={13} className="shrink-0" />
+                {data.city}
+              </span>
+              {data.manager && (
+                <span className="inline-flex items-center gap-1.5">
+                  <User size={13} className="shrink-0" />
+                  Managed by {data.manager}
+                </span>
+              )}
+            </span>
+          ) : undefined
+        }
         crumb={
           <>
             <Link href="/branches" className="hover:text-primary">
@@ -38,8 +61,9 @@ export default function BranchPage({ params }: { params: { id: string } }) {
           </>
         }
       >
+        <TimeRange value={range} onChange={setRange} />
         {branches && (
-          <Select
+          <Dropdown
             value={id}
             onChange={(v) => router.push(`/branches/${v}`)}
             options={branches.map((b) => ({ label: b.name, value: b.id }))}
@@ -57,13 +81,15 @@ export default function BranchPage({ params }: { params: { id: string } }) {
             <>
               <KpiCard
                 alarm={(data.kpis.attainment ?? 0) < 0.05}
-                label="Delivered"
-                value={data.kpis.cars_delivered}
+                tone="primary"
+                icon={<Car size={16} />}
+                label="Cars delivered"
+                value={<CountUp value={data.kpis.cars_delivered} format={intFmt} />}
                 sub={`${data.kpis.total_leads} leads`}
               />
-              <KpiCard stripe="warning" label="Conversion" value={pct(data.kpis.conversion)} sub={`group ${pct(data.group_conversion)}`} />
-              <KpiCard stripe="warning" label="Attainment" value={pct(data.kpis.attainment ?? 0)} sub={`target ${data.kpis.target_units}`} />
-              <KpiCard stripe="success" label="Revenue" value={formatINR(data.kpis.revenue_booked)} sub="booked" />
+              <KpiCard tone="warning" icon={<Target size={16} />} label="Conversion" value={<CountUp value={data.kpis.conversion} format={(n) => pct(n)} />} sub={`group ${pct(data.group_conversion)}`} />
+              <KpiCard tone="warning" icon={<Gauge size={16} />} label="Attainment" value={<CountUp value={data.kpis.attainment ?? 0} format={(n) => pct(n)} />} sub={`target ${data.kpis.target_units}`} />
+              <KpiCard tone="success" icon={<IndianRupee size={16} />} label="Revenue" value={<CountUp value={data.kpis.revenue_booked} format={formatINR} />} sub="booked" />
             </>
           )}
         </div>
@@ -84,13 +110,14 @@ export default function BranchPage({ params }: { params: { id: string } }) {
             )}
           </Card>
 
-          <Card title="Reps at this branch" hint={data ? `${data.reps.length} reps` : ''}>
+          <Card title="Branch Representatives" hint={data ? `${data.reps.length} reps` : ''}>
             {loading || !data ? (
               <Skeleton className="h-56 w-full" />
             ) : (
               <DataTable<RepRow>
                 rows={data.reps}
                 getKey={(r) => r.id}
+                rowHref={(r) => `/reps/${r.id}`}
                 columns={[
                   {
                     key: 'name',
@@ -111,6 +138,20 @@ export default function BranchPage({ params }: { params: { id: string } }) {
                       <Badge tone={r.conversion < 0.1 ? 'danger' : r.conversion < 0.2 ? 'warning' : 'success'} mono>
                         {pct(r.conversion)}
                       </Badge>
+                    ),
+                  },
+                  {
+                    key: 'go',
+                    header: '',
+                    align: 'right',
+                    render: (r) => (
+                      <Link
+                        href={`/reps/${r.id}`}
+                        aria-label={`View ${r.name}`}
+                        className="flex justify-end text-primary opacity-0 transition-all duration-fast group-hover:translate-x-0.5 group-hover:opacity-100"
+                      >
+                        <ArrowUpRight size={16} />
+                      </Link>
                     ),
                   },
                 ]}

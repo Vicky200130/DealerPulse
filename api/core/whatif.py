@@ -7,8 +7,8 @@ current average deal value.
 from .loader import scope_leads, stages_reached
 
 
-def simulate(lift_pct: float = 10, branch=None) -> dict:
-    leads = scope_leads(branch)
+def simulate(lift_pct: float = 10, branch=None, dfrom=None, dto=None) -> dict:
+    leads = scope_leads(branch, dfrom, dto)
     test_drives = sum(1 for l in leads if "test_drive" in stages_reached(l))
     orders = sum(1 for l in leads if "order_placed" in stages_reached(l))
     delivered = [l for l in leads if l["status"] == "delivered"]

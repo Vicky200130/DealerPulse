@@ -13,7 +13,7 @@ export function MobileNav() {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="md:hidden sticky top-0 z-30 bg-sidebar text-sidebar-fg">
+    <div className="md:hidden sticky top-0 z-30 bg-sidebar text-sidebar-fg border-b border-sidebar-border">
       <div className="flex items-center gap-2.5 px-3 py-2.5">
         <span className="inline-flex h-7 w-7 items-center justify-center rounded-sm bg-primary text-primary-fg">
           <Activity size={15} />
@@ -33,7 +33,7 @@ export function MobileNav() {
       </div>
 
       {open && (
-        <nav className="flex flex-col gap-0.5 border-t border-white/10 px-2 py-2">
+        <nav className="flex flex-col gap-0.5 border-t border-sidebar-border px-2 py-2">
           {NAV.map((n) => {
             const active = n.exact ? path === '/' : path.startsWith(n.href);
             const Icon = n.icon;
@@ -43,11 +43,14 @@ export function MobileNav() {
                 href={n.href}
                 onClick={() => setOpen(false)}
                 className={cn(
-                  'flex items-center gap-3 rounded-sm px-3 py-2.5 text-sm font-medium transition-colors duration-fast',
-                  active ? 'bg-sidebar-active text-sidebar-fg' : 'text-sidebar-muted hover:text-sidebar-fg',
+                  'relative flex items-center gap-3 rounded-sm px-3 py-2.5 text-sm font-medium transition-colors duration-fast',
+                  active
+                    ? 'bg-sidebar-active text-primary-700 font-semibold'
+                    : 'text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-fg',
                 )}
               >
-                <Icon size={16} className={cn(active && 'text-primary-400')} />
+                {active && <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-pill bg-primary" />}
+                <Icon size={16} className={cn(active && 'text-primary-600')} />
                 {n.label}
               </Link>
             );
