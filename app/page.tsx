@@ -16,13 +16,15 @@ import {
   Users,
   Target,
   TrendingDown,
+  TrendingUp,
   Trophy,
   XCircle,
 } from 'lucide-react';
 import { useApi } from '@/lib/useApi';
 import { formatINR, pct } from '@/lib/format';
 import { cn } from '@/lib/cn';
-import { STAGE_LABELS, type BranchStatus, type FunnelStep, type Overview } from '@/types';
+import { fmtDay, MONTHS_SHORT } from '@/lib/dates';
+import { SOURCE_LABELS, STAGE_LABELS, type BranchStatus, type FunnelStep, type Overview } from '@/types';
 import { PageHeader } from '@/components/PageHeader';
 import { KpiCard } from '@/components/KpiCard';
 import { CountUp } from '@/components/CountUp';
@@ -35,21 +37,27 @@ import { ErrorState } from '@/components/ui/EmptyState';
 import { BranchFilter } from '@/components/BranchFilter';
 import { TimeRange, appendBranch, appendRange, isPastRange, prevLabel, rangeLabel, type RangeKey } from '@/components/TimeRange';
 
-// The rank circle carries the status colour (green = leading, blue = on pace,
-// red = behind) — so the data numbers themselves are never coloured.
+// The rank circle carries the status colour — so the data numbers themselves
+// are never coloured. Status ranks each branch against the GROUP's delivery
+// pace (targets are aspirational, see the note below the table), never against
+// its paper target — so the labels say "…group", not "on track".
 const STATUS_CIRCLE: Record<BranchStatus, string> = {
   leading: 'bg-success-soft text-success',
   on_pace: 'bg-primary-100 text-primary-700',
   behind: 'bg-danger-soft text-danger',
 };
 
-// Labeled status badge next to the branch name — green = healthy, red = critical.
 const STATUS_PILL: Record<BranchStatus, string> = STATUS_CIRCLE;
+// Explicitly comparative wording so a green pill next to a low % of target can
+// never be misread as "on track to hit target".
 const STATUS_LABEL: Record<BranchStatus, string> = {
-  leading: 'Leading',
-  on_pace: 'On pace',
-  behind: 'Behind',
+  leading: 'Ahead of group',
+  on_pace: 'Mid-pack',
+  behind: 'Lagging',
 };
+
+// "vs Nov" style label from a 'YYYY-MM' month key.
+const moLabel = (ym: string) => `vs ${MONTHS_SHORT[Number(ym.split('-')[1]) - 1]}`;
 
 // Numeric columns get fixed widths so Delivered / Target / Revenue read as
 // distinct, evenly-spaced columns instead of bunching at the right edge. Below
@@ -59,16 +67,6 @@ const BRANCH_COLS =
   'grid-cols-[30px_minmax(0,1fr)_72px_96px_22px] gap-x-3 md:gap-x-4 lg:grid-cols-[40px_minmax(0,1fr)_76px_60px_96px_22px]';
 
 const intFmt = (n: number) => String(Math.round(n));
-
-// Pretty labels for lead sources (raw values are snake_case).
-const SOURCE_LABELS: Record<string, string> = {
-  website: 'Website',
-  walk_in: 'Walk-in',
-  referral: 'Referral',
-  social_media: 'Social media',
-  phone_enquiry: 'Phone enquiry',
-  auto_expo: 'Auto expo',
-};
 
 // The biggest genuine funnel leak = the largest stage-to-stage drop, EXCLUDING
 // the final order_placed→delivered step (those leads aren't lost, just awaiting
@@ -108,7 +106,16 @@ export default function OverviewPage() {
 
   return (
     <>
-      <PageHeader title="Group Overview" subtitle={`5 branches · ${rangeLabel(range)}`} icon={<LayoutDashboard size={18} />}>
+      <PageHeader
+        title="Group Overview"
+        subtitle={
+          <>
+            5 branches · {rangeLabel(range)}
+            {data && <span className="text-faint"> · as of {fmtDay(data.now)} 2025</span>}
+          </>
+        }
+        icon={<LayoutDashboard size={18} />}
+      >
         <BranchFilter value={branch} onChange={setBranch} />
         <TimeRange value={range} onChange={setRange} />
       </PageHeader>
@@ -120,20 +127,28 @@ export default function OverviewPage() {
         <div className="grid grid-cols-2 gap-lg md:grid-cols-3 lg:grid-cols-5">
           {loading || !data
             ? Array.from({ length: 5 }).map((_, i) => <CardSkeleton key={i} />)
-            : (
-              <>
-                <KpiCard tone="success" icon={<IndianRupee size={16} />} label="Revenue won" value={<CountUp value={data.kpis.revenue_booked} format={formatINR} />} sub="from delivered cars" delta={data.deltas?.revenue_booked ?? null} deltaLabel={dl} />
-                <KpiCard tone="danger" icon={<TrendingDown size={16} />} label="Value lost" value={<CountUp value={data.kpis.lost_value} format={formatINR} />} sub={data.lost_reasons?.[0] ? `${data.kpis.lost} lost · mostly ${data.lost_reasons[0].reason.toLowerCase()}` : `${data.kpis.lost} deals lost`} />
-                <KpiCard tone="warning" icon={<Target size={16} />} label="Sales conversion" value={<CountUp value={data.kpis.conversion} format={(n) => pct(n)} />} sub={`${data.kpis.won_leads ?? Math.round(data.kpis.conversion * data.kpis.total_leads)} delivered + ${data.kpis.committed_leads} orders placed`} />
-                <KpiCard alarm icon={<Snowflake size={16} />} label="Value at risk" value={<CountUp value={data.kpis.cold_value} format={formatINR} />} sub={<>{data.kpis.cold_leads} leads slipping · 7+ days idle{data.kpis.awaiting_leads > 0 && (<><br /><span className="text-faint">plus {data.kpis.awaiting_leads} orders awaiting delivery</span></>)}</>} />
-                <KpiCard tone="primary" icon={<Car size={16} />} label="Cars delivered" value={<CountUp value={data.kpis.cars_delivered} format={intFmt} />} sub={`${data.kpis.total_leads} leads in scope`} delta={data.deltas?.cars_delivered ?? null} deltaLabel={dl} />
-              </>
-            )}
+            : (() => {
+                // Prefer the selected period's delta; otherwise fall back to
+                // month-over-month momentum so a "which way" read shows even in
+                // the default all-time view.
+                const revDelta = data.deltas?.revenue_booked ?? data.momentum?.revenue_booked ?? null;
+                const carsDelta = data.deltas?.cars_delivered ?? data.momentum?.cars_delivered ?? null;
+                const trendLabel = data.deltas ? dl : data.momentum ? moLabel(data.momentum.prev_month) : undefined;
+                return (
+                  <>
+                    <KpiCard tone="success" icon={<IndianRupee size={16} />} label="Revenue won" value={<CountUp value={data.kpis.revenue_booked} format={formatINR} />} sub="from delivered cars" delta={revDelta} deltaLabel={trendLabel} />
+                    <KpiCard tone="primary" icon={<Trophy size={16} />} label="Win rate" value={<CountUp value={data.kpis.win_rate} format={(n) => pct(n)} />} sub={`${data.kpis.won_leads} won vs ${data.kpis.lost} lost`} />
+                    <KpiCard tone="warning" icon={<Target size={16} />} label="Sales conversion" value={<CountUp value={data.kpis.conversion} format={(n) => pct(n)} />} sub={`${data.kpis.won_leads ?? Math.round(data.kpis.conversion * data.kpis.total_leads)} delivered + ${data.kpis.committed_leads} orders placed`} />
+                    <KpiCard alarm icon={<Snowflake size={16} />} label="Value at risk" value={<CountUp value={data.kpis.cold_value} format={formatINR} />} sub={<>{data.kpis.cold_leads} leads slipping · 7+ days idle{data.kpis.awaiting_leads > 0 && (<><br /><span className="text-faint">plus {data.kpis.awaiting_leads} orders awaiting delivery</span></>)}</>} />
+                    <KpiCard tone="primary" icon={<Car size={16} />} label="Cars delivered" value={<CountUp value={data.kpis.cars_delivered} format={intFmt} />} sub={`${data.kpis.total_leads} leads in scope`} delta={carsDelta} deltaLabel={trendLabel} />
+                  </>
+                );
+              })()}
         </div>
 
         {/* Branch health + attention */}
         <div className="grid gap-lg lg:grid-cols-[1.35fr_1fr]">
-          <Card title="Branch performance" hint="ranked by delivery">
+          <Card title="Branch performance" hint="ranked vs group pace">
             {loading || !data ? (
               <Skeleton className="h-56 w-full" />
             ) : (
@@ -158,7 +173,7 @@ export default function OverviewPage() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="min-w-0 truncate text-sm font-semibold">{b.name}</span>
-                        <span className={cn('shrink-0 rounded-pill px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide', STATUS_PILL[b.status])}>
+                        <span className={cn('shrink-0 rounded-pill px-1.5 py-0.5 text-3xs font-bold uppercase tracking-wide', STATUS_PILL[b.status])}>
                           {STATUS_LABEL[b.status]}
                         </span>
                       </div>
@@ -185,12 +200,23 @@ export default function OverviewPage() {
                   </Link>
                 ))}
                 {(() => {
-                  const leading = data.branch_health.filter((b) => b.status === 'leading').length;
+                  const gt = data.group_target;
+                  const f = data.forecast;
                   const behind = data.branch_health.filter((b) => b.status === 'behind').length;
                   return (
-                    <p className="mt-3 rounded-sm bg-surface-2 px-3 py-2.5 text-sm text-muted">
-                      {leading} {leading === 1 ? 'branch is' : 'branches are'} ahead of the group&rsquo;s pace{behind > 0 ? `, ${behind} lagging and worth a look` : ''}. Ranked by cars delivered against each branch&rsquo;s target.
-                    </p>
+                    <>
+                      <p className="mt-3 rounded-sm bg-surface-2 px-3 py-2.5 text-sm text-muted">
+                        We&rsquo;ve delivered <span className="font-semibold text-text">{gt.delivered} of {gt.target_units.toLocaleString('en-IN')}</span> units ({pct(gt.attainment)}). Targets are set far above real sales pace. So we rank branches against each other.{behind > 0 ? ` ${behind === 1 ? 'One branch is' : `${behind} branches are`} clearly behind the rest.` : ''}
+                      </p>
+                      <p className="mt-2 flex items-start gap-2 rounded-sm bg-primary-50 px-3 py-2.5 text-sm text-muted">
+                        <TrendingUp size={16} className="mt-0.5 shrink-0 text-primary-700" />
+                        <span>
+                          At the current pipeline, the group is projected to finish{' '}
+                          <span className="font-semibold text-text">~{f.projected_total} cars</span> — {f.delivered} delivered plus ~{f.projected_total - f.delivered} more expected from {f.open_leads} open deals, with{' '}
+                          <span className="font-semibold text-success">{formatINR(f.expected_additional_revenue)}</span> still winnable.
+                        </span>
+                      </p>
+                    </>
                   );
                 })()}
               </div>
@@ -281,7 +307,7 @@ export default function OverviewPage() {
             ) : (
               <div>
                 <div className="flex items-baseline gap-2">
-                  <span className="font-mono text-[38px] font-semibold leading-none text-warning">
+                  <span className="font-mono text-3xl font-semibold leading-none text-warning">
                     {Math.round(data.speed_to_lead.median_hours)}
                   </span>
                   <span className="text-sm font-semibold text-muted">hrs median</span>
@@ -308,7 +334,7 @@ export default function OverviewPage() {
                 return (
                   <div>
                     <div className="flex items-baseline gap-2">
-                      <span className="font-mono text-[38px] font-semibold leading-none">
+                      <span className="font-mono text-3xl font-semibold leading-none">
                         {formatINR(data.kpis.pipeline_value)}
                       </span>
                       <span className="text-sm font-semibold text-muted">in the pipeline</span>
@@ -318,7 +344,7 @@ export default function OverviewPage() {
                       <div className="bg-success" style={{ width: w(healthy) }} />
                       <div className="bg-danger" style={{ width: w(atRisk) }} />
                     </div>
-                    <div className="mt-3 flex flex-col gap-1.5 text-[12px]">
+                    <div className="mt-3 flex flex-col gap-1.5 text-2xs">
                       <LegendRow color="bg-primary-500" label="Committed" note="ordered, awaiting delivery" value={`${formatINR(committed)} · ${data.kpis.committed_leads}`} />
                       <LegendRow color="bg-success" label="Healthy" note="active pipeline" value={`${formatINR(healthy)} · ${healthyLeads}`} />
                       <LegendRow color="bg-danger" label="At risk" note="7+ days idle" value={`${formatINR(atRisk)} · ${data.kpis.cold_leads}`} />

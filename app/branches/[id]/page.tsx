@@ -3,16 +3,19 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowUpRight, Car, Gauge, IndianRupee, MapPin, Target, User } from 'lucide-react';
+import { ArrowUpRight, Building2, Car, Gauge, IndianRupee, MapPin, Target, User, Users } from 'lucide-react';
 import { useApi } from '@/lib/useApi';
 import { formatINR, pct } from '@/lib/format';
+import { SOURCE_LABELS } from '@/types';
 import type { BranchDetail, BranchHealth, Bottleneck, RepRow } from '@/types';
 import { PageHeader } from '@/components/PageHeader';
+import { PipelineForecast } from '@/components/PipelineForecast';
 import { TimeRange, appendRange, type RangeKey } from '@/components/TimeRange';
 import { KpiCard } from '@/components/KpiCard';
 import { CountUp } from '@/components/CountUp';
 import { Card } from '@/components/ui/Card';
 import { Funnel } from '@/components/Funnel';
+import { RankedBars } from '@/components/RankedBars';
 import { DataTable } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
 import { Dropdown } from '@/components/ui/Dropdown';
@@ -36,6 +39,7 @@ export default function BranchPage({ params }: { params: { id: string } }) {
     <>
       <PageHeader
         title={data ? data.name : 'Branch'}
+        icon={<Building2 size={18} />}
         subtitle={
           data ? (
             <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-0.5">
@@ -94,7 +98,32 @@ export default function BranchPage({ params }: { params: { id: string } }) {
           )}
         </div>
 
-        <div className="grid gap-md lg:grid-cols-[1fr_1.1fr]">
+        {/* Pipeline forecast — full-width row of how this branch's open deals are
+            projected to resolve, and the revenue still winnable. */}
+        <Card title="Pipeline forecast" hint="projected from open deals">
+          {loading || !data ? (
+            <Skeleton className="h-28 w-full" />
+          ) : (
+            <PipelineForecast f={data.pipeline_forecast} runRate={data.forecast} />
+          )}
+        </Card>
+
+        {/* Then the deals to act on today, full-width so the table has room. */}
+        <Card title="Stuck deals — act today" hint={data ? `${data.cold_categories.follow_up.count} to follow up · ${data.cold_categories.delivery.count} deliveries · ${data.cold_categories.stale.count} likely dead` : ''}>
+          {loading || !data ? (
+            <Skeleton className="h-40 w-full" />
+          ) : (
+            <DataTable<Bottleneck>
+              rows={data.cold_leads}
+              getKey={(r) => r.id}
+              empty="No cold leads — nice."
+              columns={bottleneckColumns({ showRep: true })}
+            />
+          )}
+        </Card>
+
+        {/* Where leads leak + how each rep is performing, side by side. */}
+        <div className="grid gap-md lg:grid-cols-[1fr_1.6fr]">
           <Card title="Where this branch loses leads" hint={data ? `${data.kpis.total_leads} leads` : ''}>
             {loading || !data ? (
               <Skeleton className="h-56 w-full" />
@@ -123,22 +152,55 @@ export default function BranchPage({ params }: { params: { id: string } }) {
                     key: 'name',
                     header: 'Rep',
                     render: (r) => (
-                      <Link href={`/reps/${r.id}`} className="font-semibold hover:text-primary">
-                        {r.name}
-                      </Link>
+                      <div className="flex items-center gap-2">
+                        <Link href={`/reps/${r.id}`} className="font-semibold hover:text-primary">
+                          {r.name}
+                        </Link>
+                        <Badge tone={r.conversion < 0.1 ? 'danger' : r.conversion < 0.2 ? 'warning' : 'success'} mono>
+                          {pct(r.conversion)}
+                        </Badge>
+                        {r.needs_coaching && <Badge tone="warning">Coach</Badge>}
+                      </div>
                     ),
                   },
-                  { key: 'leads', header: 'Leads', align: 'right', sortable: true, sortValue: (r) => r.leads, render: (r) => <span className="font-mono">{r.leads}</span> },
-                  { key: 'delivered', header: 'Won', align: 'right', sortable: true, sortValue: (r) => r.delivered, render: (r) => <span className="font-mono">{r.delivered}</span> },
+                  { key: 'delivered', header: 'Delivered', align: 'right', sortable: true, sortValue: (r) => r.delivered, render: (r) => <span className="font-mono">{r.delivered}</span> },
                   {
-                    key: 'conversion',
-                    header: 'Conv.',
+                    key: 'contact_rate',
+                    header: 'Contacted',
                     align: 'right',
-                    render: (r) => (
-                      <Badge tone={r.conversion < 0.1 ? 'danger' : r.conversion < 0.2 ? 'warning' : 'success'} mono>
-                        {pct(r.conversion)}
-                      </Badge>
-                    ),
+                    sortable: true,
+                    sortValue: (r) => r.contact_rate,
+                    render: (r) => <span className={`font-mono ${r.contact_rate < 0.65 ? 'text-danger' : 'text-muted'}`}>{pct(r.contact_rate)}</span>,
+                  },
+                  { key: 'active', header: 'Active', align: 'right', sortable: true, sortValue: (r) => r.active, render: (r) => <span className="font-mono">{r.active}</span> },
+                  {
+                    key: 'cold',
+                    header: 'Cold',
+                    align: 'right',
+                    sortable: true,
+                    sortValue: (r) => r.cold,
+                    render: (r) =>
+                      r.cold > 0 ? (
+                        <Badge tone="warning" mono>
+                          {r.cold}
+                        </Badge>
+                      ) : (
+                        <span className="font-mono text-faint">0</span>
+                      ),
+                  },
+                  { key: 'revenue', header: 'Revenue', align: 'right', sortable: true, sortValue: (r) => r.revenue, render: (r) => <span className="font-mono font-semibold">{formatINR(r.revenue)}</span> },
+                  {
+                    key: 'cold_value',
+                    header: 'At risk',
+                    align: 'right',
+                    sortable: true,
+                    sortValue: (r) => r.cold_value,
+                    render: (r) =>
+                      r.cold_value > 0 ? (
+                        <span className="font-mono text-warning">{formatINR(r.cold_value)}</span>
+                      ) : (
+                        <span className="font-mono text-faint">—</span>
+                      ),
                   },
                   {
                     key: 'go',
@@ -160,18 +222,41 @@ export default function BranchPage({ params }: { params: { id: string } }) {
           </Card>
         </div>
 
-        <Card title="Cold leads — act today" hint={data ? `${data.cold_leads.length} idle 7+ days` : ''}>
-          {loading || !data ? (
-            <Skeleton className="h-40 w-full" />
-          ) : (
-            <DataTable<Bottleneck>
-              rows={data.cold_leads}
-              getKey={(r) => r.id}
-              empty="No cold leads — nice."
-              columns={bottleneckColumns({ showRep: true })}
-            />
-          )}
-        </Card>
+        {/* Demand: what sells and where leads come from. */}
+        <div className="grid gap-md lg:grid-cols-2">
+          <Card title="What people are buying" hint="top models · units delivered">
+            {loading || !data ? (
+              <Skeleton className="h-56 w-full" />
+            ) : (
+              <RankedBars
+                color="primary"
+                unit="cars"
+                emptyLabel="No cars delivered"
+                emptyIcon={<Car size={20} strokeWidth={1.75} />}
+                items={[...data.model_mix]
+                  .sort((a, b) => b.delivered - a.delivered)
+                  .slice(0, 6)
+                  .map((m) => ({ label: m.model, value: m.delivered }))}
+              />
+            )}
+          </Card>
+
+          <Card title="Where leads come from" hint="by volume">
+            {loading || !data ? (
+              <Skeleton className="h-56 w-full" />
+            ) : (
+              <RankedBars
+                color="success"
+                unit="leads"
+                emptyLabel="No leads yet"
+                emptyIcon={<Users size={20} strokeWidth={1.75} />}
+                items={[...data.source_quality]
+                  .sort((a, b) => b.leads - a.leads)
+                  .map((s) => ({ label: SOURCE_LABELS[s.source] ?? s.source, value: s.leads }))}
+              />
+            )}
+          </Card>
+        </div>
       </div>
     </>
   );

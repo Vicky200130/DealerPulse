@@ -69,6 +69,8 @@ module.exports = {
         mono: ['var(--font-mono)', 'ui-monospace', 'monospace'],
       },
       fontSize: {
+        '3xs': 'var(--text-3xs)',
+        '2xs': 'var(--text-2xs)',
         xs: 'var(--text-xs)',
         sm: 'var(--text-sm)',
         base: 'var(--text-base)',

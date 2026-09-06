@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/cn';
 
 export interface Column<T> {
@@ -19,6 +20,7 @@ export function DataTable<T>({
   getKey,
   empty,
   rowHref,
+  expandable,
 }: {
   columns: Column<T>[];
   rows: T[];
@@ -26,9 +28,22 @@ export function DataTable<T>({
   empty?: React.ReactNode;
   /** When set, the whole row is clickable and navigates here. */
   rowHref?: (row: T) => string;
+  /**
+   * When set, each row gets a chevron and clicking it toggles an inline detail
+   * panel (this render) below the row. Multiple rows can be open at once.
+   */
+  expandable?: (row: T) => React.ReactNode;
 }) {
   const router = useRouter();
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
+  const [open, setOpen] = useState<Set<string>>(new Set());
+
+  const toggleRow = (key: string) =>
+    setOpen((s) => {
+      const next = new Set(s);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
 
   let data = rows;
   if (sort) {
@@ -72,47 +87,76 @@ export function DataTable<T>({
                 )}
               </th>
             ))}
+            {expandable && <th aria-hidden className="w-8 border-b border-border pb-sm" />}
           </tr>
         </thead>
         <tbody>
           {data.length === 0 && (
             <tr>
-              <td colSpan={columns.length} className="py-xl text-center text-faint">
+              <td colSpan={columns.length + (expandable ? 1 : 0)} className="py-xl text-center text-faint">
                 {empty ?? 'No data'}
               </td>
             </tr>
           )}
-          {data.map((row, i) => (
-            <tr
-              key={getKey(row, i)}
-              // Staggered reveal, matching the Overview's list rows. Capped so a
-              // 30-row leaderboard doesn't take a second to finish appearing.
-              style={{ animationDelay: `${Math.min(i, 12) * 35}ms` }}
-              // Whole-row navigation when rowHref is set. Clicks landing on an
-              // inner link (name, arrow) are left to that link — no double push.
-              onClick={
-                rowHref
-                  ? (e) => {
-                      if ((e.target as HTMLElement).closest('a')) return;
-                      router.push(rowHref(row));
-                    }
-                  : undefined
-              }
-              className={cn(
-                'group dp-rise border-b border-border last:border-0 hover:bg-surface-2 transition-colors duration-fast',
-                rowHref && 'cursor-pointer',
-              )}
-            >
-              {columns.map((c) => (
-                <td
-                  key={c.key}
-                  className={cn('px-sm py-sm align-middle', c.align === 'right' && 'text-right whitespace-nowrap')}
+          {data.map((row, i) => {
+            const key = getKey(row, i);
+            const isOpen = expandable ? open.has(key) : false;
+            return (
+              <Fragment key={key}>
+                <tr
+                  // Staggered reveal, matching the Overview's list rows. Capped so a
+                  // 30-row leaderboard doesn't take a second to finish appearing.
+                  style={{ animationDelay: `${Math.min(i, 12) * 35}ms` }}
+                  // Whole-row action: toggle the detail panel when expandable,
+                  // else navigate when rowHref is set. Clicks on an inner link
+                  // are left to that link.
+                  onClick={
+                    expandable
+                      ? (e) => {
+                          if ((e.target as HTMLElement).closest('a')) return;
+                          toggleRow(key);
+                        }
+                      : rowHref
+                        ? (e) => {
+                            if ((e.target as HTMLElement).closest('a')) return;
+                            router.push(rowHref(row));
+                          }
+                        : undefined
+                  }
+                  className={cn(
+                    'group dp-rise border-b border-border transition-colors duration-fast',
+                    !isOpen && 'last:border-0',
+                    (rowHref || expandable) && 'cursor-pointer',
+                    isOpen ? 'bg-surface-2' : 'hover:bg-surface-2',
+                  )}
                 >
-                  {c.render ? c.render(row) : ((row as Record<string, unknown>)[c.key] as React.ReactNode)}
-                </td>
-              ))}
-            </tr>
-          ))}
+                  {columns.map((c) => (
+                    <td
+                      key={c.key}
+                      className={cn('px-sm py-sm align-middle', c.align === 'right' && 'text-right whitespace-nowrap')}
+                    >
+                      {c.render ? c.render(row) : ((row as Record<string, unknown>)[c.key] as React.ReactNode)}
+                    </td>
+                  ))}
+                  {expandable && (
+                    <td className="px-sm py-sm text-right align-middle">
+                      <ChevronDown
+                        size={16}
+                        className={cn('text-faint transition-transform duration-fast', isOpen && 'rotate-180 text-primary')}
+                      />
+                    </td>
+                  )}
+                </tr>
+                {isOpen && (
+                  <tr className="border-b border-border last:border-0">
+                    <td colSpan={columns.length + 1} className="bg-surface-2 p-0 align-top">
+                      {expandable!(row)}
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>

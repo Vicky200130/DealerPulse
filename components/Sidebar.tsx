@@ -27,13 +27,13 @@ export function Sidebar() {
   return (
     <>
       {/* In-flow spacer reserving the PINNED width so a peek never reflows content. */}
-      <div className="dp-rail-spacer hidden md:block" aria-hidden="true" />
+      <div className="dp-rail-spacer hidden lg:block" aria-hidden="true" />
 
       <aside
         onMouseEnter={() => isCollapsed() && setPeek(true)}
         onMouseLeave={() => setPeek(false)}
         className={cn(
-          'dp-sidebar hidden md:flex flex-col bg-sidebar text-sidebar-fg p-3 overflow-y-auto overflow-x-hidden border-r border-sidebar-border',
+          'dp-sidebar hidden lg:flex flex-col bg-sidebar text-sidebar-fg p-3 overflow-y-auto overflow-x-hidden border-r border-sidebar-border',
           peek && 'dp-peek',
         )}
       >
@@ -64,7 +64,7 @@ export function Sidebar() {
                 key={n.href}
                 href={n.href}
                 className={cn(
-                  'dp-side-center relative flex items-center gap-3 rounded-sm px-3 py-2 text-[14px] font-medium transition-colors duration-fast',
+                  'dp-side-center relative flex items-center gap-3 rounded-sm px-3 py-2 text-sm font-medium transition-colors duration-fast',
                   active
                     ? 'bg-sidebar-active text-primary-700 font-semibold'
                     : 'text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-fg',
@@ -80,12 +80,12 @@ export function Sidebar() {
 
         <div className="dp-footer mt-auto flex items-center justify-between gap-2 border-t border-sidebar-border pt-3 px-1">
           <div className="flex min-w-0 items-center gap-2.5">
-            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-pill bg-primary text-primary-fg text-[12px] font-bold font-display">
+            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-pill bg-primary text-primary-fg text-2xs font-bold font-display">
               RC
             </span>
             <span className="dp-side-label min-w-0 leading-tight">
               <span className="block truncate text-xs font-semibold">Rahul Chopra</span>
-              <span className="block truncate text-[12px] text-sidebar-muted">Group CEO</span>
+              <span className="block truncate text-2xs text-sidebar-muted">Group CEO</span>
             </span>
           </div>
           <ThemeToggle />

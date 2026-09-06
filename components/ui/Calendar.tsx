@@ -74,7 +74,7 @@ export function Calendar({
       {mode === 'days' ? (
       <div className="grid grid-cols-7 gap-y-1">
         {WEEKDAYS.map((w) => (
-          <span key={w} className="text-center font-mono text-[10px] text-faint">{w}</span>
+          <span key={w} className="text-center font-mono text-3xs text-faint">{w}</span>
         ))}
         {monthGrid(view).map((d) => {
           const s = ymd(d);

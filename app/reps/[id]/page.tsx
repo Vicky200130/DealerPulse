@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Car, Clock, Target, Users } from 'lucide-react';
+import { Car, Clock, GraduationCap, Target, Users } from 'lucide-react';
 import { useApi } from '@/lib/useApi';
 import { pct } from '@/lib/format';
 import type { Bottleneck, RepDetail } from '@/types';
@@ -32,6 +32,7 @@ export default function RepPage({ params }: { params: { id: string } }) {
     <>
       <PageHeader
         title={data ? data.name : 'Rep'}
+        icon={<Users size={18} />}
         crumb={
           <>
             <Link href="/reps" className="hover:text-primary">
@@ -68,10 +69,21 @@ export default function RepPage({ params }: { params: { id: string } }) {
               <KpiCard tone="primary" icon={<Users size={16} />} label="Assigned leads" value={<CountUp value={data.kpis.leads} format={intFmt} />} />
               <KpiCard alarm={data.kpis.delivered <= 1} tone="primary" icon={<Car size={16} />} label="Cars delivered" value={<CountUp value={data.kpis.delivered} format={intFmt} />} />
               <KpiCard tone={below ? 'danger' : 'success'} icon={<Target size={16} />} label="Conversion" value={<CountUp value={data.kpis.conversion} format={(n) => pct(n)} />} sub={`branch ${pct(data.branch_conversion)}`} />
-              <KpiCard tone="warning" icon={<Clock size={16} />} label="Avg response" value={<CountUp value={data.kpis.avg_response_hours} format={dp1} />} unit="hrs" />
+              <KpiCard tone="warning" icon={<Clock size={16} />} label="Avg response" value={<CountUp value={data.kpis.avg_response_hours} format={dp1} />} unit="hrs" sub={`${pct(data.kpis.contact_rate)} of leads contacted`} />
             </>
           )}
         </div>
+
+        {/* Coaching flag: names the specific follow-up gap, so it's development,
+            not just a scoreboard. */}
+        {!loading && data?.needs_coaching && (
+          <div className="flex items-center gap-2.5 rounded-sm bg-warning-soft px-3.5 py-2.5 text-xs text-warning">
+            <GraduationCap size={16} className="shrink-0" />
+            <span>
+              Follow-up gap — only <span className="font-semibold">{pct(data.kpis.contact_rate)}</span> of assigned leads were ever contacted. A coaching opportunity, not a demand problem.
+            </span>
+          </div>
+        )}
 
         <div className="grid gap-md lg:grid-cols-[1fr_1.2fr]">
           <Card title="Personal funnel" hint="leads reaching each stage">

@@ -46,19 +46,22 @@ export function KpiCard({
         )}
         <div className="text-sm font-medium text-muted">{label}</div>
       </div>
-      <div className={cn('mt-3 font-mono text-[24px] font-semibold leading-none tabular-nums sm:text-[28px]', alarm && 'text-danger')}>
+      <div className={cn('mt-3 font-mono text-2xl font-semibold leading-none tabular-nums', alarm && 'text-danger')}>
         {value}
         {unit && <span className="text-md font-medium text-muted"> {unit}</span>}
       </div>
-      {delta != null ? (
-        <div className={cn('mt-2.5 flex items-center gap-1 text-xs font-semibold', up ? 'text-success' : 'text-danger')}>
-          {up ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-          <span>{up ? '+' : ''}{pct(delta)}</span>
-          {deltaLabel && <span className="font-normal text-faint">{deltaLabel}</span>}
-        </div>
-      ) : (
-        sub && <div className="mt-2.5 text-xs text-muted">{sub}</div>
-      )}
+      {/* Trend delta (when present) sits above the sub-line, so a card can show
+          both "which way it moved" and the descriptive context. */}
+      <div className="mt-2.5 flex flex-col gap-1">
+        {delta != null && (
+          <div className={cn('flex items-center gap-1 text-xs font-semibold', up ? 'text-success' : 'text-danger')}>
+            {up ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+            <span>{up ? '+' : ''}{pct(delta)}</span>
+            {deltaLabel && <span className="font-normal text-faint">{deltaLabel}</span>}
+          </div>
+        )}
+        {sub && <div className="text-xs text-muted">{sub}</div>}
+      </div>
     </div>
   );
 }

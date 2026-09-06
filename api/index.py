@@ -55,16 +55,21 @@ def overview(
     leads = loader.scope_leads(branch, dfrom, dto)
     dels = loader.scope_deliveries(branch, dfrom, dto)
     k = metrics.kpis(leads, dels)
+    monthly = metrics.monthly_deliveries(dels)
     return {
         "kpis": k,
         "deltas": _period_deltas(k, branch, dfrom, dto),
+        "momentum": metrics.momentum(monthly),
         "funnel": metrics.funnel(leads),
         "speed_to_lead": metrics.speed_to_lead(leads),
-        "monthly": metrics.monthly_deliveries(dels),
+        "monthly": monthly,
         "branch_health": branches.branch_health(dfrom, dto),
+        "group_target": branches.group_target(dfrom, dto),
+        "forecast": branches.group_forecast(dfrom, dto),
         "lost_reasons": insights.lost_reasons(leads),
         "model_mix": deliv.model_mix(branch, dfrom, dto),
         "source_quality": insights.source_quality(leads),
+        "now": loader.NOW.date().isoformat(),
     }
 
 
@@ -162,6 +167,8 @@ def deliveries_ep(
     return {
         "analysis": deliv.delivery_analysis(branch, dfrom, dto),
         "model_mix": deliv.model_mix(branch, dfrom, dto),
+        "awaiting": deliv.awaiting_orders(branch, dfrom, dto),
+        "now": loader.NOW.date().isoformat(),
     }
 
 
@@ -174,10 +181,13 @@ def insights_ep(
     dfrom, dto = _d(date_from), _d(to)
     leads = loader.scope_leads(branch, dfrom, dto)
     dels = loader.scope_deliveries(branch, dfrom, dto)
+    bh = branches.branch_health(dfrom, dto)  # cross-branch, for the outlier signal
     return {
-        "summary": insights.summary(leads, dels),
-        "lost_reasons": insights.lost_reasons(leads),
+        "signals": insights.signals(leads, dels, bh, branch),
+        "leak": insights.revenue_leak(leads),
         "source_quality": insights.source_quality(leads),
+        "kpis": metrics.kpis(leads, dels),
+        "now": loader.NOW.date().isoformat(),
     }
 
 

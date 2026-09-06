@@ -4,7 +4,7 @@ from collections import defaultdict
 from datetime import date
 from typing import Optional
 
-from . import metrics, bottlenecks
+from . import metrics, bottlenecks, deliveries, insights, forecast
 from .loader import (
     BRANCHES, TARGETS, OPEN_STATUSES, REP_BY_ID, LEAD_BY_ID,
     branch_name, branch_manager, scope_leads, scope_deliveries, idle_days,
@@ -39,6 +39,65 @@ def _target_units(bid: str, dfrom: Optional[date] = None, dto: Optional[date] = 
         month_days = (m_end - m_start).days + 1
         total += t["target_units"] * overlap / month_days
     return round(total)
+
+
+def _monthly_target(bid: str, dfrom: Optional[date] = None, dto: Optional[date] = None) -> int:
+    """Average monthly unit target for the branch across the months in scope.
+
+    Unlike `_target_units` (a prorated cumulative total, the right denominator
+    for attainment), this is the per-month bar the run-rate forecast compares
+    against — "delivering ~4/mo against a ~38/mo target".
+    """
+    vals = []
+    for t in TARGETS:
+        if t["branch_id"] != bid:
+            continue
+        y, m = (int(x) for x in t["month"].split("-"))
+        m_start = date(y, m, 1)
+        m_end = date(y, m, monthrange(y, m)[1])
+        if dfrom and m_end < dfrom:
+            continue
+        if dto and m_start > dto:
+            continue
+        vals.append(t["target_units"])
+    return round(sum(vals) / len(vals)) if vals else 0
+
+
+def _monthly_delivered(bid: str, dfrom=None, dto=None) -> list:
+    """(month, count) pairs of cars delivered by this branch, oldest first."""
+    counts = defaultdict(int)
+    for d in scope_deliveries(bid, dfrom, dto):
+        counts[d["delivery_date"][:7]] += 1
+    return [(m, counts[m]) for m in sorted(counts)]
+
+
+def _forecast(bid: str, dfrom=None, dto=None) -> dict:
+    """Run-rate forecast: recent monthly pace vs the monthly target, plus trend.
+
+    Answers the question attainment can't — "at the pace we're actually going,
+    are we closing the gap or falling further behind?" recent_pace is the mean
+    of the last up-to-3 delivered months; trend compares the two most recent.
+    """
+    series = _monthly_delivered(bid, dfrom, dto)
+    monthly_target = _monthly_target(bid, dfrom, dto)
+    recent = [c for _, c in series[-3:]]
+    recent_pace = round(sum(recent) / len(recent), 1) if recent else 0.0
+    last = series[-1][1] if series else 0
+    prev = series[-2][1] if len(series) >= 2 else None
+    if prev is None or prev == last:
+        trend = "flat"
+    elif last > prev:
+        trend = "up"
+    else:
+        trend = "down"
+    return {
+        "monthly_target": monthly_target,
+        "recent_pace": recent_pace,
+        "pace_pct": round(recent_pace / monthly_target, 4) if monthly_target else 0,
+        "trend": trend,
+        "last_month": last,
+        "prev_month": prev,
+    }
 
 
 def _status_tier(attainment: float, group_avg: float) -> str:
@@ -78,6 +137,9 @@ def branch_health(dfrom=None, dto=None) -> list:
         total_target += target
         open_leads = [l for l in leads if l["status"] in OPEN_STATUSES]
         cold = [l for l in open_leads if idle_days(l) >= 7]
+        # Compact pipeline projection for the card (full by-stage detail is only
+        # attached on the branch drill-down, to keep the list payload lean).
+        pf = forecast.with_target(forecast.project(open_leads, delivered), target)
         rows.append({
             "id": b["id"], "name": b["name"], "city": b["city"],
             "manager": branch_manager(b["id"]),
@@ -87,6 +149,11 @@ def branch_health(dfrom=None, dto=None) -> list:
             "conversion": metrics.conversion(leads),
             "cold_leads": len(cold),
             "revenue": revenue,
+            "forecast": _forecast(b["id"], dfrom, dto),
+            "pipeline_forecast": {k: pf[k] for k in (
+                "projected_total", "expected_additional", "expected_additional_revenue",
+                "pipeline_value", "open_leads", "attainment_projected", "on_track",
+            )},
         })
     group_avg = (total_delivered / total_target) if total_target else 0
     for r in rows:
@@ -95,23 +162,72 @@ def branch_health(dfrom=None, dto=None) -> list:
     return rows
 
 
+def group_forecast(dfrom=None, dto=None) -> dict:
+    """Group-wide pipeline projection: cars delivered so far plus the probability-
+    weighted resolution of every open deal across all five branches. Powers the
+    "projected to finish ~X" read on the overview."""
+    delivered = sum(len(scope_deliveries(b["id"], dfrom, dto)) for b in BRANCHES)
+    open_leads = [l for l in scope_leads(None, dfrom, dto) if l["status"] in OPEN_STATUSES]
+    target = sum(_target_units(b["id"], dfrom, dto) for b in BRANCHES)
+    return forecast.with_target(forecast.project(open_leads, delivered), target)
+
+
+def group_target(dfrom=None, dto=None) -> dict:
+    """Group-wide delivered vs (aspirational) target — the honest headline that
+    keeps the group-relative branch badges from looking like a cover-up."""
+    delivered = total = 0
+    for b in BRANCHES:
+        delivered += len(scope_deliveries(b["id"], dfrom, dto))
+        total += _target_units(b["id"], dfrom, dto)
+    return {
+        "delivered": delivered,
+        "target_units": total,
+        "attainment": round(delivered / total, 4) if total else 0,
+    }
+
+
+def _coaching(contact_rate: float, response_hours: float, leads: int) -> bool:
+    """Flag a rep whose follow-up discipline is an individual outlier.
+
+    Keyed on contact rate (leads never worked at all), which genuinely varies
+    rep-to-rep (0.33-0.94). Response time is NOT used as the trigger: the whole
+    team is slow (~46h median), so it's a systemic fix surfaced group-wide, not
+    a stick to single out individuals. Needs enough leads (8+) to be fair."""
+    return leads >= 8 and (contact_rate < 0.65 or response_hours > 72)
+
+
 def branch_reps(bid: str, dfrom=None, dto=None) -> list:
     leads = scope_leads(bid, dfrom, dto)
-    agg = defaultdict(lambda: {"leads": 0, "delivered": 0, "revenue": 0})
+    agg = defaultdict(lambda: {"delivered": 0, "revenue": 0, "active": 0, "cold": 0, "cold_value": 0, "leads": []})
     for l in leads:
         a = agg[l["assigned_to"]]
-        a["leads"] += 1
+        a["leads"].append(l)
         if l["status"] == "delivered":
             a["delivered"] += 1
             a["revenue"] += l.get("deal_value", 0)
+        # Open deals the rep is currently working; "cold" = those idle 7+ days
+        # (the leads that actually need a nudge), and cold_value is the revenue
+        # tied up in them. No per-rep target exists in the data, so we surface
+        # effort / pipeline health (and money at risk) instead of attainment.
+        if l["status"] in OPEN_STATUSES:
+            a["active"] += 1
+            if idle_days(l) >= 7:
+                a["cold"] += 1
+                a["cold_value"] += l.get("deal_value", 0)
     rows = []
     for rid, a in agg.items():
         rep = REP_BY_ID.get(rid, {})
+        n = len(a["leads"])
+        cr = metrics.contact_rate(a["leads"])
+        resp = metrics.speed_to_lead(a["leads"])["median_hours"]
         rows.append({
             "id": rid, "name": rep.get("name", rid), "role": rep.get("role", ""),
-            "leads": a["leads"], "delivered": a["delivered"],
-            "conversion": round(a["delivered"] / a["leads"], 4) if a["leads"] else 0,
+            "leads": n, "delivered": a["delivered"],
+            "conversion": round(a["delivered"] / n, 4) if n else 0,
             "revenue": a["revenue"],
+            "active": a["active"], "cold": a["cold"], "cold_value": a["cold_value"],
+            "contact_rate": cr, "avg_response_hours": resp,
+            "needs_coaching": _coaching(cr, resp, n),
         })
     rows.sort(key=lambda r: -r["delivered"])
     return rows
@@ -132,35 +248,51 @@ def branch_detail(bid: str, dfrom=None, dto=None) -> Optional[dict]:
         "id": b["id"], "name": b["name"], "city": b["city"],
         "manager": branch_manager(b["id"]),
         "kpis": k,
+        "forecast": _forecast(bid, dfrom, dto),
+        "pipeline_forecast": forecast.with_target(
+            forecast.project([l for l in leads if l["status"] in OPEN_STATUSES], k["cars_delivered"]),
+            target,
+        ),
         "funnel": metrics.funnel(leads, group_by="rep"),
+        "model_mix": deliveries.model_mix(bid, dfrom, dto),
+        "source_quality": insights.source_quality(leads),
         "reps": branch_reps(bid, dfrom, dto),
         "cold_leads": cold["rows"],
+        "cold_categories": cold["categories"],
         "group_conversion": metrics.conversion(scope_leads(None, dfrom, dto)),
     }
 
 
 def rep_leaderboard(branch=None, dfrom=None, dto=None) -> list:
     leads = scope_leads(branch, dfrom, dto)
-    agg = defaultdict(lambda: {"leads": 0, "delivered": 0, "revenue": 0, "open": 0})
+    agg = defaultdict(lambda: {"delivered": 0, "revenue": 0, "open": 0, "cold": 0, "leads": []})
     for l in leads:
         a = agg[l["assigned_to"]]
-        a["leads"] += 1
+        a["leads"].append(l)
         if l["status"] == "delivered":
             a["delivered"] += 1
             a["revenue"] += l.get("deal_value", 0)
         if l["status"] in OPEN_STATUSES:
             a["open"] += 1
+            if idle_days(l) >= 7:
+                a["cold"] += 1
     rows = []
     for rid, a in agg.items():
         rep = REP_BY_ID.get(rid, {})
+        n = len(a["leads"])
+        cr = metrics.contact_rate(a["leads"])
+        resp = metrics.speed_to_lead(a["leads"])["median_hours"]
         rows.append({
             "id": rid, "name": rep.get("name", rid),
             "branch": branch_name(rep.get("branch_id", "")),
             "role": rep.get("role", ""),
-            "leads": a["leads"], "delivered": a["delivered"],
+            "leads": n, "delivered": a["delivered"],
+            "conversion": round(a["delivered"] / n, 4) if n else 0,
             "revenue": a["revenue"],
             "avg_deal": round(a["revenue"] / a["delivered"]) if a["delivered"] else 0,
-            "active_deals": a["open"],
+            "active_deals": a["open"], "cold": a["cold"],
+            "contact_rate": cr, "avg_response_hours": resp,
+            "needs_coaching": _coaching(cr, resp, n),
             "overloaded": a["open"] > 15,
         })
     rows.sort(key=lambda r: -r["revenue"])
@@ -180,10 +312,12 @@ def rep_detail(rid: str, dfrom=None, dto=None) -> Optional[dict]:
     branch_leads = scope_leads(rep["branch_id"], dfrom, dto)
     pipeline = [bottlenecks.score_lead(l) for l in open_leads]
     pipeline.sort(key=lambda r: -r["deal_value"])
+    cr = metrics.contact_rate(leads)
     return {
         "id": rid, "name": rep["name"], "role": rep["role"],
         "branch_id": rep["branch_id"], "branch": branch_name(rep["branch_id"]),
         "joined": rep.get("joined"),
+        "needs_coaching": _coaching(cr, sp["median_hours"], total),
         "kpis": {
             "leads": total,
             "delivered": len(delivered),
@@ -191,6 +325,7 @@ def rep_detail(rid: str, dfrom=None, dto=None) -> Optional[dict]:
             "revenue": sum(l.get("deal_value", 0) for l in delivered),
             "open_deals": len(open_leads),
             "avg_response_hours": sp["median_hours"],
+            "contact_rate": cr,
         },
         "funnel": metrics.funnel(leads),
         "pipeline": pipeline,

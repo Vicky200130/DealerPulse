@@ -1,62 +1,70 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Activity, Menu, X } from 'lucide-react';
+import { Activity } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { ThemeToggle } from './ThemeToggle';
 import { NAV } from './navItems';
 
+/**
+ * Below `lg` (mobile + tablet) the fixed left sidebar is hidden and navigation
+ * moves to two pieces: a slim top bar for brand + theme, and a bottom tab bar
+ * holding every destination (icon + label). Bottom placement keeps the tabs in
+ * the thumb zone and every view one tap away — better than a hidden hamburger
+ * for a dashboard people hop across constantly. On tablet the row is centered
+ * (max-width) so it reads as intentional instead of stretching edge-to-edge.
+ */
 export function MobileNav() {
   const path = usePathname();
-  const [open, setOpen] = useState(false);
+  const isActive = (n: (typeof NAV)[number]) =>
+    n.exact ? path === '/' : path.startsWith(n.href);
 
   return (
-    <div className="md:hidden sticky top-0 z-30 bg-sidebar text-sidebar-fg border-b border-sidebar-border">
-      <div className="flex items-center gap-2.5 px-3 py-2.5">
+    <>
+      {/* Slim top bar: brand + theme toggle (nav lives in the bottom bar). */}
+      <div className="lg:hidden sticky top-0 z-30 flex items-center gap-2.5 border-b border-sidebar-border bg-sidebar px-3 py-2.5 text-sidebar-fg">
         <span className="inline-flex h-7 w-7 items-center justify-center rounded-sm bg-primary text-primary-fg">
           <Activity size={15} />
         </span>
         <span className="font-display text-sm font-extrabold">DealerPulse</span>
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto">
           <ThemeToggle />
-          <button
-            onClick={() => setOpen((o) => !o)}
-            aria-label="Toggle menu"
-            aria-expanded={open}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-sm text-sidebar-muted hover:bg-sidebar-active hover:text-sidebar-fg transition-colors duration-fast"
-          >
-            {open ? <X size={18} /> : <Menu size={18} />}
-          </button>
         </div>
       </div>
 
-      {open && (
-        <nav className="flex flex-col gap-0.5 border-t border-sidebar-border px-2 py-2">
+      {/* Bottom tab bar: thumb-reachable, all destinations visible. */}
+      <nav
+        aria-label="Primary"
+        className="lg:hidden fixed inset-x-0 bottom-0 z-30 border-t border-sidebar-border bg-sidebar text-sidebar-fg"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        <div className="mx-auto flex max-w-2xl items-stretch">
           {NAV.map((n) => {
-            const active = n.exact ? path === '/' : path.startsWith(n.href);
+            const active = isActive(n);
             const Icon = n.icon;
             return (
               <Link
                 key={n.href}
                 href={n.href}
-                onClick={() => setOpen(false)}
+                aria-current={active ? 'page' : undefined}
                 className={cn(
-                  'relative flex items-center gap-3 rounded-sm px-3 py-2.5 text-sm font-medium transition-colors duration-fast',
-                  active
-                    ? 'bg-sidebar-active text-primary-700 font-semibold'
-                    : 'text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-fg',
+                  'relative flex flex-1 flex-col items-center justify-center gap-1 px-0.5 py-2 transition-colors duration-fast',
+                  active ? 'text-primary-700' : 'text-sidebar-muted hover:text-sidebar-fg',
                 )}
               >
-                {active && <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-pill bg-primary" />}
-                <Icon size={16} className={cn(active && 'text-primary-600')} />
-                {n.label}
+                {active && (
+                  <span className="absolute inset-x-3 top-0 h-0.5 rounded-pill bg-primary" />
+                )}
+                <Icon size={20} className={cn('shrink-0', active && 'text-primary-600')} />
+                <span className="text-3xs font-medium leading-none tracking-tight whitespace-nowrap">
+                  {n.short ?? n.label}
+                </span>
               </Link>
             );
           })}
-        </nav>
-      )}
-    </div>
+        </div>
+      </nav>
+    </>
   );
 }

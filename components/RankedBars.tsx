@@ -104,14 +104,14 @@ export function RankedBars({
                   >
                     {inside && (
                       <>
-                        <span className="text-[13px] font-medium">{it.label}</span>
+                        <span className="text-xs font-medium">{it.label}</span>
                         <span className="font-mono text-sm font-semibold">{it.value}</span>
                       </>
                     )}
                   </div>
                   {!inside && (
                     <div className="pointer-events-none absolute inset-y-0 flex items-center gap-2 whitespace-nowrap" style={{ left: `calc(${w}% + 8px)` }}>
-                      <span className="text-[13px] font-medium text-muted">{it.label}</span>
+                      <span className="text-xs font-medium text-muted">{it.label}</span>
                       <span className="font-mono text-sm font-semibold text-text">{it.value}</span>
                     </div>
                   )}
@@ -146,7 +146,7 @@ export function RankedBars({
             {ticks.map((t) => (
               <span
                 key={t}
-                className="absolute top-0 font-mono text-[10px] text-faint"
+                className="absolute top-0 font-mono text-3xs text-faint"
                 style={{ left: `${(t / max) * 100}%`, transform: t === 0 ? 'none' : t === max ? 'translateX(-100%)' : 'translateX(-50%)' }}
               >
                 {t}

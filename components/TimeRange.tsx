@@ -141,7 +141,7 @@ export function TimeRange({ value, onChange }: { value: Range; onChange: (v: Ran
               </button>
             ))}
           </div>
-          <div className="my-3 flex items-center gap-2 text-[11px] font-mono uppercase tracking-wide text-faint">
+          <div className="my-3 flex items-center gap-2 text-2xs font-mono uppercase tracking-wide text-faint">
             <span className="h-px flex-1 bg-border" />
             Custom range
             <span className="h-px flex-1 bg-border" />

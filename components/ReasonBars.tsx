@@ -6,7 +6,8 @@ export function ReasonBars({
   color = 'danger',
   emptyLabel = 'No data yet',
 }: {
-  items: { label: string; value: number; display?: string }[];
+  // `title` (optional) is the full text shown on hover when `label` is shortened.
+  items: { label: string; value: number; display?: string; title?: string }[];
   color?: 'danger' | 'primary' | 'success';
   emptyLabel?: string;
 }) {
@@ -22,8 +23,8 @@ export function ReasonBars({
   return (
     <div className="flex flex-col gap-2.5">
       {items.map((it, i) => (
-        <div key={it.label} style={{ animationDelay: `${i * 45}ms` }} className="dp-rise grid grid-cols-[110px_1fr_40px] sm:grid-cols-[150px_1fr_44px] items-center gap-2.5 text-xs">
-          <span className="truncate text-muted">{it.label}</span>
+        <div key={it.label} style={{ animationDelay: `${i * 45}ms` }} className="dp-rise grid grid-cols-[132px_1fr_32px] sm:grid-cols-[180px_1fr_44px] items-center gap-2.5 text-xs">
+          <span title={it.title ?? it.label} className="text-muted leading-snug break-words">{it.label}</span>
           <div className="h-2.5 overflow-hidden rounded-pill bg-surface-2">
             <div className={cn('h-full rounded-pill', bar)} style={{ width: `${(it.value / max) * 100}%` }} />
           </div>

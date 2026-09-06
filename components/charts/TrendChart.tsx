@@ -54,7 +54,7 @@ export function TrendChart({ data, note }: { data: MonthPoint[]; note?: React.Re
   return (
     <div className="flex h-full flex-col">
       {/* legend — which mark is which */}
-      <div className="mb-1.5 flex items-center gap-4 text-[11px] text-muted">
+      <div className="mb-1.5 flex items-center gap-4 text-2xs text-muted">
         <span className="flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-[2px] bg-primary" />
           Cars delivered

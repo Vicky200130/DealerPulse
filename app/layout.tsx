@@ -26,7 +26,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <div className="flex min-h-screen">
           <Sidebar />
-          <main className="min-w-0 flex-1">
+          <main className="min-w-0 flex-1 pb-[calc(64px_+_env(safe-area-inset-bottom))] lg:pb-0">
             <MobileNav />
             {children}
           </main>

@@ -1,10 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { AlertTriangle, Car, Clock, Gauge } from 'lucide-react';
+import { AlertTriangle, Car, Clock, Gauge, Truck } from 'lucide-react';
 import { useApi } from '@/lib/useApi';
 import { formatINR, pct } from '@/lib/format';
-import type { DeliveriesResp, ModelRow } from '@/types';
+import type { AwaitingOrder, DeliveriesResp, ModelRow } from '@/types';
 import { PageHeader } from '@/components/PageHeader';
 import { BranchFilter } from '@/components/BranchFilter';
 import { TimeRange, appendBranch, appendRange, rangeLabel, type RangeKey } from '@/components/TimeRange';
@@ -16,6 +16,17 @@ import { DataTable } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
 import { CardSkeleton, Skeleton } from '@/components/ui/Skeleton';
 import { ErrorState } from '@/components/ui/EmptyState';
+
+// Short, one-line labels for the delay-reason bars (full text shows on hover).
+const DELAY_LABELS: Record<string, string> = {
+  'Customer requested date change': 'Customer changed date',
+  'Logistics delay in transit': 'Logistics delay',
+  'Vehicle allocation delayed from factory': 'Factory allocation delay',
+  'Accessory fitment backlog': 'Accessory fitment',
+  'Finance disbursement pending': 'Finance pending',
+  'RTO registration delay': 'RTO registration',
+  'PDI rework required': 'PDI rework',
+};
 
 const intFmt = (n: number) => String(Math.round(n));
 // Keeps one decimal without forcing a trailing .0 (12 → "12", 12.5 → "12.5").
@@ -30,7 +41,7 @@ export default function DeliveriesPage() {
 
   return (
     <>
-      <PageHeader title="Deliveries & Demand" subtitle="Delivery times and model demand">
+      <PageHeader title="Deliveries & Demand" subtitle="Delivery times and model demand" icon={<Truck size={18} />}>
         <BranchFilter value={branch} onChange={setBranch} />
         <TimeRange value={range} onChange={setRange} />
       </PageHeader>
@@ -50,16 +61,75 @@ export default function DeliveriesPage() {
           )}
         </div>
 
+        {/* Committed orders awaiting delivery — booked revenue that hasn't been
+            collected yet. The oldest ones are the fulfilment backlog behind the
+            delay reasons below. */}
+        <Card
+          title="Committed orders awaiting delivery"
+          hint={data ? `${data.awaiting.count} orders · ${formatINR(data.awaiting.value)}` : ''}
+        >
+          {loading || !data ? (
+            <Skeleton className="h-56 w-full" />
+          ) : (
+            <div className="flex flex-col gap-3">
+              <p className="text-sm text-muted">
+                <span className="font-semibold text-text">{formatINR(data.awaiting.value)}</span> of booked revenue is waiting to be delivered
+                {data.awaiting.over_60_value > 0 && (
+                  <>
+                    {' '}— <span className="font-semibold text-danger">{formatINR(data.awaiting.over_60_value)}</span> of it stuck 60+ days
+                  </>
+                )}
+                .
+              </p>
+              <div className="grid grid-cols-3 gap-2.5">
+                <AgingPill label="Under 30 days" count={data.awaiting.buckets.under_30} tone="neutral" />
+                <AgingPill label="30–59 days" count={data.awaiting.buckets['30_59']} tone="warning" />
+                <AgingPill label="60+ days" count={data.awaiting.buckets['60_plus']} tone="danger" />
+              </div>
+              <DataTable<AwaitingOrder>
+                rows={data.awaiting.rows.slice(0, 10)}
+                getKey={(r) => r.id}
+                empty="No orders awaiting delivery."
+                columns={[
+                  {
+                    key: 'customer_name',
+                    header: 'Customer',
+                    render: (r) => (
+                      <div>
+                        <div className="font-semibold">{r.customer_name}</div>
+                        <div className="text-xs text-faint">{r.model} · {r.branch}</div>
+                      </div>
+                    ),
+                  },
+                  { key: 'deal_value', header: 'Value', align: 'right', sortable: true, sortValue: (r) => r.deal_value, render: (r) => <span className="font-mono">{formatINR(r.deal_value)}</span> },
+                  {
+                    key: 'days_waiting',
+                    header: 'Waiting',
+                    align: 'right',
+                    sortable: true,
+                    sortValue: (r) => r.days_waiting,
+                    render: (r) => (
+                      <Badge tone={r.days_waiting >= 60 ? 'danger' : r.days_waiting >= 30 ? 'warning' : 'neutral'} mono>
+                        {r.days_waiting}d
+                      </Badge>
+                    ),
+                  },
+                ]}
+              />
+            </div>
+          )}
+        </Card>
+
         <div className="grid gap-md lg:grid-cols-2">
           <Card title="Why deliveries slip" hint={a ? `${a.delayed} delayed` : ''}>
             {loading || !a ? (
               <Skeleton className="h-56 w-full" />
             ) : (
-              <ReasonBars color="danger" items={a.delay_reasons.map((r) => ({ label: r.reason, value: r.count }))} />
+              <ReasonBars color="danger" items={a.delay_reasons.map((r) => ({ label: DELAY_LABELS[r.reason] ?? r.reason, value: r.count, title: r.reason }))} />
             )}
           </Card>
 
-          <Card title="What people actually buy" hint="leads · won · avg price">
+          <Card title="What people actually buy" hint="leads · won · avg price · revenue">
             {loading || !data ? (
               <Skeleton className="h-56 w-full" />
             ) : (
@@ -83,7 +153,8 @@ export default function DeliveriesPage() {
                   },
                   { key: 'leads', header: 'Leads', align: 'right', sortable: true, sortValue: (r) => r.leads, render: (r) => <span className="font-mono">{r.leads}</span> },
                   { key: 'delivered', header: 'Won', align: 'right', sortable: true, sortValue: (r) => r.delivered, render: (r) => <span className="font-mono">{r.delivered}</span> },
-                  { key: 'avg_price', header: 'Avg price', align: 'right', sortable: true, sortValue: (r) => r.avg_price, render: (r) => <span className="font-mono">{formatINR(r.avg_price)}</span> },
+                  { key: 'avg_price', header: 'Avg price', align: 'right', sortable: true, sortValue: (r) => r.avg_price, render: (r) => <span className="font-mono text-muted">{formatINR(r.avg_price)}</span> },
+                  { key: 'revenue', header: 'Revenue', align: 'right', sortable: true, sortValue: (r) => r.revenue, render: (r) => <span className="font-mono font-semibold">{formatINR(r.revenue)}</span> },
                 ]}
               />
             )}
@@ -91,5 +162,19 @@ export default function DeliveriesPage() {
         </div>
       </div>
     </>
+  );
+}
+
+function AgingPill({ label, count, tone }: { label: string; count: number; tone: 'neutral' | 'warning' | 'danger' }) {
+  const cls = {
+    neutral: 'bg-surface-2 text-muted',
+    warning: 'bg-warning-soft text-warning',
+    danger: 'bg-danger-soft text-danger',
+  }[tone];
+  return (
+    <div className={`rounded-sm px-3 py-2 ${cls}`}>
+      <div className="font-mono text-lg font-semibold tabular-nums">{count}</div>
+      <div className="text-2xs font-medium">{label}</div>
+    </div>
   );
 }

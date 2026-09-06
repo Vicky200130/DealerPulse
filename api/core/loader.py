@@ -30,6 +30,14 @@ MANAGER_BY_BRANCH = {r["branch_id"]: r["name"] for r in REPS if r.get("role") ==
 STAGES = ["new", "contacted", "test_drive", "negotiation", "order_placed", "delivered"]
 OPEN_STATUSES = {"new", "contacted", "test_drive", "negotiation", "order_placed"}
 
+# Idle thresholds (days), relative to the NOW anchor. A lead untouched for
+# COLD_DAYS needs a nudge; one untouched for STALE_DAYS is almost certainly
+# dead (in this data every 60+ day-idle deal is an order stuck awaiting
+# delivery for months) and should be triaged to close, not chased like a warm
+# lead. Kept here so every screen agrees on the same cut-offs.
+COLD_DAYS = 7
+STALE_DAYS = 60
+
 
 def parse_dt(s: Optional[str]) -> Optional[datetime]:
     """Parse an ISO timestamp (with or without 'Z'/microseconds) into naive UTC."""

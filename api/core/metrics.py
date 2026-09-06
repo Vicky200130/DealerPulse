@@ -2,7 +2,10 @@
 import statistics
 from collections import Counter, defaultdict
 
-from .loader import STAGES, OPEN_STATUSES, LEAD_BY_ID, REP_BY_ID, branch_name, idle_days, parse_dt, stages_reached
+from .loader import (
+    STAGES, OPEN_STATUSES, COLD_DAYS, STALE_DAYS, LEAD_BY_ID, REP_BY_ID,
+    branch_name, idle_days, parse_dt, stages_reached,
+)
 
 
 def kpis(leads: list, deliveries: list) -> dict:
@@ -32,11 +35,17 @@ def kpis(leads: list, deliveries: list) -> dict:
     # committed and are only awaiting delivery, so they're a fulfilment concern,
     # not a loss risk. Lumping them in overstated the headline (₹6.6 Cr when the
     # genuinely-slipping value is ~₹1.5 Cr).
-    cold = [l for l in open_leads if l["status"] != "order_placed" and idle_days(l) >= 7]
+    cold = [l for l in open_leads if l["status"] != "order_placed" and idle_days(l) >= COLD_DAYS]
     cold_value = sum(l.get("deal_value", 0) for l in cold)
     # Committed-but-stalled: ordered, awaiting delivery, but quiet 7+ days.
-    awaiting = [l for l in open_leads if l["status"] == "order_placed" and idle_days(l) >= 7]
+    awaiting = [l for l in open_leads if l["status"] == "order_placed" and idle_days(l) >= COLD_DAYS]
     awaiting_value = sum(l.get("deal_value", 0) for l in awaiting)
+    # Likely-dead: any open deal untouched for STALE_DAYS+. In this data these
+    # are overwhelmingly orders stuck in delivery for months — money that needs
+    # a close/cancel decision, not a "cold lead" nudge. Surfaced separately so
+    # the action lists stay honest about what's recoverable.
+    stale = [l for l in open_leads if idle_days(l) >= STALE_DAYS]
+    stale_value = sum(l.get("deal_value", 0) for l in stale)
 
     days = [d["days_to_deliver"] for d in deliveries]
     avg_delivery = round(sum(days) / len(days), 1) if days else 0
@@ -58,6 +67,8 @@ def kpis(leads: list, deliveries: list) -> dict:
         "cold_value": cold_value,
         "awaiting_leads": len(awaiting),
         "awaiting_value": awaiting_value,
+        "stale_leads": len(stale),
+        "stale_value": stale_value,
         "avg_delivery_days": avg_delivery,
         "pipeline_value": sum(l.get("deal_value", 0) for l in open_leads),
         # "Committed" = every ordered deal (won-but-not-yet-delivered), used to
@@ -158,3 +169,41 @@ def conversion(leads: list) -> float:
     if not total:
         return 0.0
     return round(sum(1 for l in leads if l["status"] == "delivered") / total, 4)
+
+
+def momentum(monthly: list) -> dict:
+    """Latest complete month vs the month before, for the headline KPIs.
+
+    Gives every view a plain "which way are we heading" read — shown even in the
+    default all-time view, where period-over-period deltas don't apply. Returns
+    None when there aren't two months to compare.
+    """
+    if len(monthly) < 2:
+        return None
+    cur, prev = monthly[-1], monthly[-2]
+
+    def rel(key):
+        c, p = cur[key], prev[key]
+        return round((c - p) / p, 4) if p else None
+
+    return {
+        "current_month": cur["month"],
+        "prev_month": prev["month"],
+        "cars_delivered": rel("delivered"),
+        "revenue_booked": rel("revenue"),
+        "cars_delivered_current": cur["delivered"],
+        "cars_delivered_prev": prev["delivered"],
+    }
+
+
+def contact_rate(leads: list) -> float:
+    """Share of assigned leads a rep has ever actually contacted.
+
+    A follow-up-discipline signal: a rep sitting on many never-contacted leads
+    has a coaching problem, not a demand problem. Uses status_history so it
+    counts leads that reached "contacted" at any point, not just current status.
+    """
+    if not leads:
+        return 0.0
+    contacted = sum(1 for l in leads if "contacted" in stages_reached(l))
+    return round(contacted / len(leads), 4)

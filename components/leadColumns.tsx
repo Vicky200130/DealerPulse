@@ -1,17 +1,26 @@
 import { Badge } from './ui/Badge';
 import type { Column } from './ui/Table';
 import { formatINR } from '@/lib/format';
-import { STAGE_LABELS, type Bottleneck, type Severity } from '@/types';
+import { STAGE_LABELS, type Bottleneck, type BottleneckCategory } from '@/types';
 
-const sevTone = (s: Severity) => (s === 'critical' ? 'danger' : s === 'warning' ? 'warning' : 'success');
+// The three triage buckets, shown as a chip so it's instantly clear whether a
+// row is a sales follow-up, a delivery chase, or a dead deal to close — the
+// distinction the old flat "Health: 0" column hid.
+const CATEGORY_META: Record<BottleneckCategory, { label: string; cls: string }> = {
+  follow_up: { label: 'Follow-up', cls: 'bg-primary-100 text-primary-700' },
+  delivery: { label: 'Delivery', cls: 'bg-warning-soft text-warning' },
+  stale: { label: 'Likely dead', cls: 'bg-surface-2 text-muted' },
+};
 
+// A stage-specific instruction reads as "urgent" when it demands a call, a
+// manager, or an escalation/close decision — those get the red treatment.
 function NextAction({ label }: { label: string }) {
   const l = label.toLowerCase();
-  const urgent = l.includes('immediate') || l.includes('manager');
+  const urgent = l.includes('call now') || l.includes('manager') || l.includes('escalate') || l.includes('revive');
   return (
     <span
       className={
-        'inline-block rounded-sm px-2 py-1 text-[12px] font-semibold whitespace-nowrap ' +
+        'inline-block rounded-sm px-2 py-1 text-2xs font-semibold whitespace-nowrap ' +
         (urgent ? 'bg-danger-soft text-danger' : 'bg-primary-100 text-primary-700')
       }
     >
@@ -43,16 +52,12 @@ export function bottleneckColumns(opts?: { showRep?: boolean }): Column<Bottlene
       render: (b) => <span className="font-mono">{formatINR(b.deal_value)}</span>,
     },
     {
-      key: 'health',
-      header: 'Health',
-      align: 'right',
-      sortable: true,
-      sortValue: (b) => b.health,
-      render: (b) => (
-        <Badge tone={sevTone(b.severity)} mono>
-          {b.health}
-        </Badge>
-      ),
+      key: 'category',
+      header: 'Type',
+      render: (b) => {
+        const m = CATEGORY_META[b.category];
+        return <span className={`inline-block rounded-pill px-2 py-0.5 text-2xs font-semibold ${m.cls}`}>{m.label}</span>;
+      },
     },
     {
       key: 'next_best_action',
@@ -81,7 +86,7 @@ export function bottleneckColumns(opts?: { showRep?: boolean }): Column<Bottlene
     sortable: true,
     sortValue: (b) => b.idle_days,
     render: (b) => (
-      <Badge tone={b.idle_days >= 14 ? 'danger' : b.idle_days >= 10 ? 'warning' : 'neutral'} mono>
+      <Badge tone={b.idle_days >= 60 ? 'danger' : b.idle_days >= 14 ? 'warning' : 'neutral'} mono>
         {b.idle_days}d
       </Badge>
     ),
