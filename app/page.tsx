@@ -23,7 +23,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { useApi } from '@/lib/useApi';
-import { useBranch, useRange } from '@/lib/useFilters';
+import { useBranch, useRange, useRep } from '@/lib/useFilters';
 import { formatINR, pct } from '@/lib/format';
 import { cn } from '@/lib/cn';
 import { fmtDay, MONTHS_SHORT } from '@/lib/dates';
@@ -34,11 +34,15 @@ import { CountUp } from '@/components/CountUp';
 import { Card } from '@/components/ui/Card';
 import { Funnel } from '@/components/Funnel';
 import { RankedBars } from '@/components/RankedBars';
+import { RepPerformance } from '@/components/RepPerformance';
+import { SalesRepOverview } from '@/components/SalesRepOverview';
 import { TrendChart } from '@/components/charts/TrendChart';
 import { CardSkeleton, Skeleton } from '@/components/ui/Skeleton';
 import { ErrorState } from '@/components/ui/EmptyState';
 import { BranchFilter } from '@/components/BranchFilter';
+import { RepFilter } from '@/components/RepFilter';
 import { TimeRange, appendBranch, appendRange, isPastRange, prevLabel, rangeLabel } from '@/components/TimeRange';
+import { useView } from '@/lib/view';
 
 // The rank circle carries the status colour — so the data numbers themselves
 // are never coloured. Status ranks each branch against the GROUP's delivery
@@ -89,9 +93,19 @@ function biggestLeak(funnel: FunnelStep[]): { from: string; to: string; drop: nu
 }
 
 export default function OverviewPage() {
+  const { view } = useView();
+  // The page's SHAPE is role-based: a branch manager sees rep performance + a
+  // branch summary; the CEO always sees the cross-branch ranking + group summary,
+  // even with a branch filter applied. The branch/rep filters only scope the
+  // cohort cards (KPIs, funnel, trend, models, sources).
+  const isManager = view.role === 'branch_manager';
   const [range, setRange] = useRange();
   const [branch, setBranch] = useBranch();
-  const { data, error, loading } = useApi<Overview>(appendBranch(appendRange('/overview', range), branch));
+  const [rep, setRep] = useRep();
+  const basePath = appendBranch(appendRange('/overview', range), branch);
+  const { data, error, loading } = useApi<Overview>(
+    rep ? `${basePath}${basePath.includes('?') ? '&' : '?'}rep=${rep}` : basePath,
+  );
   const past = isPastRange(range);
   const dl = prevLabel(range);
 
@@ -108,19 +122,31 @@ export default function OverviewPage() {
         })
       : data?.branch_health ?? [];
 
+  // `scoped` = a branch is in play (so the rep filter is relevant). `scopedBranch`
+  // is that branch's health row, used for the manager's summary/forecast.
+  const scoped = !!branch;
+  const scopedBranch = scoped && data ? data.branch_health.find((x) => x.id === branch) ?? null : null;
+
+  // A sales executive sees only their own performance — a personal dashboard in
+  // place of the group/branch overview.
+  if (view.role === 'sales_rep' && view.repId) {
+    return <SalesRepOverview repId={view.repId} />;
+  }
+
   return (
     <>
       <PageHeader
-        title="Group Overview"
+        title={isManager ? scopedBranch?.name ?? 'Overview' : 'Group Overview'}
         subtitle={
           <>
-            5 branches · {rangeLabel(range)}
+            {isManager ? scopedBranch?.city ?? 'Branch' : '5 branches'} · {rangeLabel(range)}
             {data && <span className="text-faint"> · as of {fmtDay(data.now)} 2025</span>}
           </>
         }
         icon={<LayoutDashboard size={18} />}
       >
         <BranchFilter value={branch} onChange={setBranch} />
+        <RepFilter branch={branch} value={rep} onChange={setRep} />
         <TimeRange value={range} onChange={setRange} />
       </PageHeader>
 
@@ -153,9 +179,38 @@ export default function OverviewPage() {
 
         {/* Branch health + attention */}
         <div className="grid gap-lg lg:grid-cols-[1.35fr_1fr]">
-          <Card title="Branch performance" hint="ranked vs group pace">
+          <Card
+            title={isManager ? 'Sales rep performance' : 'Branch performance'}
+            hint={isManager ? scopedBranch?.name ?? 'this branch' : 'ranked vs group pace'}
+          >
             {loading || !data ? (
               <Skeleton className="h-56 w-full" />
+            ) : isManager ? (
+              <div className="flex flex-col tabular-nums">
+                <RepPerformance reps={data.reps ?? []} />
+                {(() => {
+                  const sb = scopedBranch;
+                  if (!sb) return null;
+                  const pf = sb.pipeline_forecast;
+                  const mult = sb.delivered ? Math.round(sb.target_units / sb.delivered) : 0;
+                  const paceNote = mult >= 2 ? `roughly ${mult}× real pace` : 'well above real pace';
+                  return (
+                    <>
+                      <p className="mt-3 rounded-sm bg-surface-2 px-3 py-2.5 text-sm text-muted">
+                        {sb.name} delivered <span className="font-semibold text-text">{sb.delivered} of {sb.target_units.toLocaleString('en-IN')} cars ({pct(sb.attainment)})</span> and <span className="font-semibold text-text">{formatINR(sb.revenue)} of {formatINR(sb.revenue_target)} ({pct(sb.revenue_attainment)})</span> — targets are stretch goals, {paceNote}.
+                      </p>
+                      <p className="mt-2 flex items-start gap-2 rounded-sm bg-primary-50 px-3 py-2.5 text-sm text-muted">
+                        <TrendingUp size={16} className="mt-0.5 shrink-0 text-primary-700" />
+                        <span>
+                          Once the deals they&rsquo;re working now play out, this branch should finish around{' '}
+                          <span className="font-semibold text-text">{pf.projected_total} cars</span> — with{' '}
+                          <span className="font-semibold text-success">{formatINR(pf.expected_additional_revenue)}</span> of revenue still to win.
+                        </span>
+                      </p>
+                    </>
+                  );
+                })()}
+              </div>
             ) : (
               <div className="flex flex-col tabular-nums">
                 {/* Scroll horizontally on narrow screens so the branch name +
@@ -250,9 +305,32 @@ export default function OverviewPage() {
             )}
           </Card>
 
-          <Card title={past ? 'Period highlights' : 'Needs your attention'} hint={past ? 'what happened' : 'auto-ranked'}>
+          <Card
+            title={isManager ? 'Needs attention' : past ? 'Period highlights' : 'Needs your attention'}
+            hint={isManager ? scopedBranch?.name ?? 'this branch' : past ? 'what happened' : 'auto-ranked'}
+          >
             {loading || !data ? (
               <Skeleton className="h-56 w-full" />
+            ) : isManager ? (
+              <div className="flex flex-col gap-2.5">
+                {(() => {
+                  const leak = biggestLeak(data.funnel);
+                  const weakRep = (data.reps ?? []).filter((r) => r.needs_coaching).sort((a, b) => a.contact_rate - b.contact_rate)[0] ?? null;
+                  return (
+                    <>
+                      {data.kpis.cold_leads > 0 && (
+                        <Attention tone="warning" icon={<Clock size={17} />} title={`${data.kpis.cold_leads} leads going cold`} body={`Worth ${formatINR(data.kpis.cold_value)} in pipeline, untouched 7+ days.`} href="/bottlenecks" delay={0} />
+                      )}
+                      {weakRep && (
+                        <Attention tone="danger" icon={<User size={17} />} title={`${weakRep.name} needs support`} body={`Only ${pct(weakRep.contact_rate)} of assigned leads contacted — a follow-up gap to coach.`} href={`/reps/${weakRep.id}`} delay={55} />
+                      )}
+                      {leak && (
+                        <Attention tone="primary" icon={<TrendingDown size={17} />} title={`Most leads fall off between ${leak.from} and ${leak.to}`} body={`${Math.round(leak.drop * 100)}% drop out at this step — the biggest leak.`} href="/insights" delay={110} />
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
             ) : past ? (
               <div className="flex flex-col gap-2.5">
                 {(() => {
@@ -397,7 +475,7 @@ export default function OverviewPage() {
                 items={[...data.model_mix]
                   .sort((a, b) => b.delivered - a.delivered)
                   .slice(0, 6)
-                  .map((m) => ({ label: m.model, value: m.delivered, by_branch: m.by_branch }))}
+                  .map((m) => ({ label: m.model, value: m.delivered, by_branch: m.by_branch, by_rep: m.by_rep }))}
                 note={(() => {
                   const ms = [...data.model_mix].sort((a, b) => b.delivered - a.delivered);
                   const totalDel = ms.reduce((a, m) => a + m.delivered, 0);
@@ -419,7 +497,7 @@ export default function OverviewPage() {
                 emptyIcon={<Users size={20} strokeWidth={1.75} />}
                 items={[...data.source_quality]
                   .sort((a, b) => b.leads - a.leads)
-                  .map((s) => ({ label: SOURCE_LABELS[s.source] ?? s.source, value: s.leads, by_branch: s.by_branch }))}
+                  .map((s) => ({ label: SOURCE_LABELS[s.source] ?? s.source, value: s.leads, by_branch: s.by_branch, by_rep: s.by_rep }))}
                 note={(() => {
                   const ss = data.source_quality;
                   if (!ss.length) return undefined;

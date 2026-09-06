@@ -14,6 +14,7 @@
 // filter click.
 import { type ReadonlyURLSearchParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import type { Range } from '@/components/TimeRange';
+import { useView } from './view';
 
 const PRESETS = new Set(['week', 'month', 'quarter', 'lastquarter', 'all']);
 
@@ -49,17 +50,44 @@ export function useRange(): [Range, (r: Range) => void] {
 }
 
 export function useBranch(): [string, (b: string) => void] {
+  const { view } = useView();
   const sp = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
 
   const setBranch = (b: string) => {
     const next = new URLSearchParams(sp.toString());
+    next.delete('rep'); // a rep belongs to a branch — changing branch clears it
     if (b) next.set('branch', b);
     else next.delete('branch');
     const qs = next.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   };
 
+  // A branch manager (or a rep) is locked to their own branch: the filter is
+  // forced and its setter is a no-op. The BranchFilter control hides itself for
+  // these roles, so this is just the data-scoping half of that lock.
+  if (view.role !== 'admin' && view.branchId) {
+    return [view.branchId, () => {}];
+  }
+
   return [sp.get('branch') ?? '', setBranch];
+}
+
+// Cascading sales-rep filter (URL: ?rep=SR29). Empty = all reps. Only meaningful
+// once a branch is in scope; the RepFilter control shows itself accordingly.
+export function useRep(): [string, (r: string) => void] {
+  const sp = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const setRep = (r: string) => {
+    const next = new URLSearchParams(sp.toString());
+    if (r) next.set('rep', r);
+    else next.delete('rep');
+    const qs = next.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
+
+  return [sp.get('rep') ?? '', setRep];
 }

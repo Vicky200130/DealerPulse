@@ -138,6 +138,7 @@ export interface MonthPoint {
   delivered: number;
   revenue: number;
   by_branch?: { branch: string; count: number; revenue: number }[];
+  by_rep?: { rep: string; count: number; revenue: number }[];
 }
 
 export interface BranchHealth {
@@ -171,6 +172,9 @@ export interface Overview {
   speed_to_lead: SpeedToLead;
   monthly: MonthPoint[];
   branch_health: BranchHealth[];
+  // Present only when scoped to one branch — that branch's reps, for the
+  // "Sales rep performance" table that replaces branch ranking.
+  reps: LeaderRow[] | null;
   group_target: GroupTarget;
   forecast: PipelineForecast;
   lost_reasons: LostReason[];
@@ -305,6 +309,7 @@ export interface ModelRow {
   avg_price: number;
   revenue: number;
   by_branch?: { branch: string; count: number }[];
+  by_rep?: { rep: string; count: number }[];
 }
 
 export interface AwaitingOrder {
@@ -343,6 +348,7 @@ export interface SourceQuality {
   delivered: number;
   rate: number;
   by_branch?: { branch: string; count: number }[];
+  by_rep?: { rep: string; count: number }[];
 }
 
 // Pretty labels for lead sources (raw values are snake_case). Shared by the

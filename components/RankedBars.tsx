@@ -10,8 +10,10 @@ import { InsightNote } from './InsightNote';
 // gridlines with an axis. When a bar is too short to hold its label + count,
 // they flip outside to the right. On hover a row reveals its per-branch
 // breakdown (same as the funnel), and an optional note surfaces an insight.
-type Slice = { branch: string; count: number };
-type Item = { label: string; value: number; by_branch?: Slice[] };
+// A hover breakdown row — split by branch (group view) or by rep (scoped to one
+// branch). Exactly one name field is set; the component reads whichever is there.
+type Slice = { branch?: string; rep?: string; count: number };
+type Item = { label: string; value: number; by_branch?: Slice[]; by_rep?: Slice[] };
 
 function axisTicks(max: number): number[] {
   const m = Math.max(Math.round(max), 1);
@@ -91,6 +93,7 @@ export function RankedBars({
             const w = Math.max(6, (it.value / max) * 100);
             const needPx = it.label.length * 6.9 + String(it.value).length * 8.6 + 30;
             const inside = trackW === 0 || (trackW * w) / 100 >= needPx;
+            const parts = it.by_rep ?? it.by_branch; // per-rep when scoped, else per-branch
             return (
               <div key={it.label} className={cn('group relative grid items-center gap-x-3', showRank ? 'grid-cols-[24px_minmax(0,1fr)]' : 'grid-cols-1')}>
                 {showRank && <span className="text-right font-mono text-xs text-faint">{i + 1}</span>}
@@ -123,19 +126,22 @@ export function RankedBars({
                 {/* hover: which branch contributed how many. Opens ABOVE the bar
                     so the last rows don't push the tooltip past the card and grow
                     the page (which caused a scrollbar flicker). */}
-                {it.by_branch && it.by_branch.length > 0 && (
+                {parts && parts.length > 0 && (
                   <div className="pointer-events-none absolute bottom-full z-30 mb-2 hidden w-max min-w-[200px] max-w-[260px] overflow-hidden rounded-lg border border-border bg-surface text-xs shadow-lg group-hover:block" style={{ left: trackLeft }}>
                     <div className="flex items-center justify-between gap-6 px-4 pt-3 pb-2.5 font-semibold">
                       <span>{it.label}</span>
                       <span className="font-mono text-muted">{it.value} {unit}</span>
                     </div>
                     <div className="flex flex-col gap-2.5 border-t border-border px-4 pt-2.5 pb-3">
-                      {it.by_branch.map((b) => (
-                        <div key={b.branch} className="flex items-center justify-between gap-6">
-                          <span className="text-muted">{b.branch}</span>
-                          <span className="font-mono font-semibold">{b.count}</span>
-                        </div>
-                      ))}
+                      {parts.map((p) => {
+                        const nm = p.rep ?? p.branch ?? '';
+                        return (
+                          <div key={nm} className="flex items-center justify-between gap-6">
+                            <span className="text-muted">{nm}</span>
+                            <span className="font-mono font-semibold">{p.count}</span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}

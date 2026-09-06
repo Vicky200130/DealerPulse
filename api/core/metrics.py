@@ -142,12 +142,20 @@ def speed_to_lead(leads: list) -> dict:
     }
 
 
-def monthly_deliveries(deliveries: list) -> list:
+def monthly_deliveries(deliveries: list, by: str = "branch") -> list:
     """Cars delivered and revenue booked per calendar month (by delivery date),
-    with a per-branch delivered breakdown for the hover tooltip."""
+    with a per-contributor delivered breakdown for the hover tooltip. `by="branch"`
+    (default) splits each month across branches — right for the group view;
+    `by="rep"` splits across reps — right when scoped to a single branch, where a
+    by-branch split would collapse to one row."""
+    rep = by == "rep"
+    field = "by_rep" if rep else "by_branch"
+    key_name = "rep" if rep else "branch"
+    name = (lambda k: REP_BY_ID.get(k, {}).get("name", k)) if rep else branch_name
+
     counts = Counter()
     revenue = defaultdict(int)
-    by_branch = defaultdict(lambda: defaultdict(lambda: {"count": 0, "revenue": 0}))
+    parts = defaultdict(lambda: defaultdict(lambda: {"count": 0, "revenue": 0}))
     for d in deliveries:
         m = d["delivery_date"][:7]
         counts[m] += 1
@@ -155,16 +163,16 @@ def monthly_deliveries(deliveries: list) -> list:
         if lead:
             val = lead.get("deal_value", 0)
             revenue[m] += val
-            b = by_branch[m][lead["branch_id"]]
-            b["count"] += 1
-            b["revenue"] += val
+            p = parts[m][lead["assigned_to"] if rep else lead["branch_id"]]
+            p["count"] += 1
+            p["revenue"] += val
     out = []
     for m in sorted(counts):
-        bb = sorted(
-            ({"branch": branch_name(bid), "count": v["count"], "revenue": v["revenue"]} for bid, v in by_branch[m].items()),
+        breakdown = sorted(
+            ({key_name: name(k), "count": v["count"], "revenue": v["revenue"]} for k, v in parts[m].items()),
             key=lambda x: -x["count"],
         )
-        out.append({"month": m, "delivered": counts[m], "revenue": revenue[m], "by_branch": bb})
+        out.append({"month": m, "delivered": counts[m], "revenue": revenue[m], field: breakdown})
     return out
 
 

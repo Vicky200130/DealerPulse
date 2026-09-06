@@ -11,8 +11,10 @@ def _avg(xs: list) -> float:
     return round(sum(xs) / len(xs), 1) if xs else 0
 
 
-def delivery_analysis(branch=None, dfrom=None, dto=None) -> dict:
+def delivery_analysis(branch=None, dfrom=None, dto=None, rep=None) -> dict:
     ds = scope_deliveries(branch, dfrom, dto)
+    if rep:  # cascading rep filter
+        ds = [d for d in ds if LEAD_BY_ID.get(d["lead_id"], {}).get("assigned_to") == rep]
     total = len(ds)
     delayed = [d for d in ds if d.get("delay_reason")]
     ontime = [d for d in ds if not d.get("delay_reason")]
@@ -36,7 +38,7 @@ def _days_since_order(lead: dict) -> int:
     return (NOW - placed).days if placed else 0
 
 
-def awaiting_orders(branch=None, dfrom=None, dto=None) -> dict:
+def awaiting_orders(branch=None, dfrom=None, dto=None, rep=None) -> dict:
     """Committed orders (order placed, not yet delivered) and how long each has
     been waiting — booked revenue sitting on the factory floor. Aged into
     buckets so the fulfilment backlog reads at a glance."""
@@ -44,13 +46,15 @@ def awaiting_orders(branch=None, dfrom=None, dto=None) -> dict:
     for l in scope_leads(branch, dfrom, dto):
         if l["status"] != "order_placed":
             continue
-        rep = REP_BY_ID.get(l["assigned_to"], {})
+        if rep and l["assigned_to"] != rep:  # cascading rep filter
+            continue
+        rep_info = REP_BY_ID.get(l["assigned_to"], {})
         rows.append({
             "id": l["id"],
             "customer_name": l["customer_name"],
             "model": l["model_interested"],
             "branch": branch_name(l["branch_id"]),
-            "rep": rep.get("name", l["assigned_to"]),
+            "rep": rep_info.get("name", l["assigned_to"]),
             "deal_value": l.get("deal_value", 0),
             "days_waiting": _days_since_order(l),
         })
@@ -69,17 +73,26 @@ def awaiting_orders(branch=None, dfrom=None, dto=None) -> dict:
     }
 
 
-def model_mix(branch=None, dfrom=None, dto=None) -> list:
+def model_mix(branch=None, dfrom=None, dto=None, by: str = "branch", rep=None) -> list:
     """Per model: demand (leads created in range) plus actual deliveries in range.
 
-    `delivered`/`revenue`/`by_branch` are DELIVERY-date based — matching the
-    headline "Cars delivered" KPI and the monthly trend — so all three delivery
-    views agree for any window (previously this counted the created-lead cohort,
-    which diverged on custom ranges). `leads` stays the created-cohort demand.
+    `delivered`/`revenue` and the delivered breakdown are DELIVERY-date based —
+    matching the headline "Cars delivered" KPI and the monthly trend — so all
+    delivery views agree for any window. `leads` stays the created-cohort demand.
+    The breakdown splits deliveries by branch (`by="branch"`, the group view) or
+    by rep (`by="rep"`, right when scoped to one branch).
     """
+    by_rep = by == "rep"
+    field = "by_rep" if by_rep else "by_branch"
+    key_name = "rep" if by_rep else "branch"
+    name = (lambda k: REP_BY_ID.get(k, {}).get("name", k)) if by_rep else branch_name
+
     leads = scope_leads(branch, dfrom, dto)
     dels = scope_deliveries(branch, dfrom, dto)
-    stats = defaultdict(lambda: {"leads": 0, "delivered": 0, "revenue": 0, "values": [], "by_branch": defaultdict(int)})
+    if rep:  # cascading rep filter (scope this card to one rep)
+        leads = [l for l in leads if l["assigned_to"] == rep]
+        dels = [d for d in dels if LEAD_BY_ID.get(d["lead_id"], {}).get("assigned_to") == rep]
+    stats = defaultdict(lambda: {"leads": 0, "delivered": 0, "revenue": 0, "values": [], "parts": defaultdict(int)})
     for l in leads:
         s = stats[l["model_interested"]]
         s["leads"] += 1
@@ -92,7 +105,7 @@ def model_mix(branch=None, dfrom=None, dto=None) -> list:
         s = stats[lead["model_interested"]]
         s["delivered"] += 1
         s["revenue"] += lead.get("deal_value", 0)
-        s["by_branch"][lead["branch_id"]] += 1
+        s["parts"][lead["assigned_to"] if by_rep else lead["branch_id"]] += 1
     rows = []
     for model, s in stats.items():
         avg = round(sum(s["values"]) / len(s["values"])) if s["values"] else 0
@@ -102,8 +115,8 @@ def model_mix(branch=None, dfrom=None, dto=None) -> list:
             "delivered": s["delivered"],
             "avg_price": avg,
             "revenue": s["revenue"],
-            "by_branch": sorted(
-                ({"branch": branch_name(bid), "count": c} for bid, c in s["by_branch"].items()),
+            field: sorted(
+                ({key_name: name(k), "count": c} for k, c in s["parts"].items()),
                 key=lambda x: -x["count"],
             ),
         })

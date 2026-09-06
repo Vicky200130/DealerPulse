@@ -3,6 +3,8 @@ import { Suspense } from 'react';
 import './globals.css';
 import { Sidebar } from '@/components/Sidebar';
 import { MobileNav } from '@/components/MobileNav';
+import { ViewSwitcher } from '@/components/ViewSwitcher';
+import { ViewProvider } from '@/lib/view';
 import { NO_FLASH_SCRIPT } from '@/lib/theme';
 import { SIDEBAR_NO_FLASH_SCRIPT } from '@/lib/sidebar';
 
@@ -25,15 +27,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body>
-        <div className="flex min-h-screen">
-          <Sidebar />
-          <main className="min-w-0 flex-1 pb-[calc(64px_+_env(safe-area-inset-bottom))] lg:pb-0">
-            <MobileNav />
-            {/* Suspense boundary so pages can read filters from the URL
-                (useSearchParams) without bailing the production build. */}
-            <Suspense>{children}</Suspense>
-          </main>
-        </div>
+        <ViewProvider>
+          <div className="flex min-h-screen">
+            <Sidebar />
+            <main className="min-w-0 flex-1 pb-[calc(64px_+_env(safe-area-inset-bottom))] lg:pb-0">
+              <MobileNav />
+              {/* Suspense boundary so pages can read filters from the URL
+                  (useSearchParams) without bailing the production build. */}
+              <Suspense>{children}</Suspense>
+            </main>
+          </div>
+          {/* Floating "Viewing as" control — obvious, on top of everything, and
+              draggable so it never blocks content. */}
+          <ViewSwitcher />
+        </ViewProvider>
       </body>
     </html>
   );

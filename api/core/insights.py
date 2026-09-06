@@ -8,7 +8,7 @@ from collections import Counter, defaultdict
 from datetime import datetime
 
 from . import metrics
-from .loader import STAGES, branch_name, stages_reached
+from .loader import STAGES, REP_BY_ID, branch_name, stages_reached
 
 
 def _cr(value: float) -> str:
@@ -29,20 +29,29 @@ def lost_reasons(leads: list) -> list:
     return [{"reason": r, "count": n} for r, n in c.most_common()]
 
 
-def source_quality(leads: list) -> list:
-    d = defaultdict(lambda: {"leads": 0, "delivered": 0, "by_branch": defaultdict(int)})
+def source_quality(leads: list, by: str = "branch") -> list:
+    """Lead sources with their delivery rate, plus a breakdown of who those leads
+    went to — by branch (`by="branch"`, the group view) or by rep (`by="rep"`,
+    right when scoped to a single branch)."""
+    rep = by == "rep"
+    field = "by_rep" if rep else "by_branch"
+    key_name = "rep" if rep else "branch"
+    name = (lambda k: REP_BY_ID.get(k, {}).get("name", k)) if rep else branch_name
+
+    d = defaultdict(lambda: {"leads": 0, "delivered": 0, "parts": defaultdict(int)})
     for l in leads:
-        d[l["source"]]["leads"] += 1
-        d[l["source"]]["by_branch"][l["branch_id"]] += 1  # which branch this lead came into
+        v = d[l["source"]]
+        v["leads"] += 1
+        v["parts"][l["assigned_to"] if rep else l["branch_id"]] += 1
         if l["status"] == "delivered":
-            d[l["source"]]["delivered"] += 1
+            v["delivered"] += 1
     rows = [{
         "source": s,
         "leads": v["leads"],
         "delivered": v["delivered"],
         "rate": round(v["delivered"] / v["leads"], 4) if v["leads"] else 0,
-        "by_branch": sorted(
-            ({"branch": branch_name(bid), "count": c} for bid, c in v["by_branch"].items()),
+        field: sorted(
+            ({key_name: name(k), "count": c} for k, c in v["parts"].items()),
             key=lambda x: -x["count"],
         ),
     } for s, v in d.items()]

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Building2, MapPin, User } from 'lucide-react';
 import { useApi } from '@/lib/useApi';
 import { useRange } from '@/lib/useFilters';
+import { useRequireAdmin } from '@/lib/view';
 import { formatINR, pct } from '@/lib/format';
 import { cn } from '@/lib/cn';
 import type { BranchHealth } from '@/types';
@@ -22,8 +23,10 @@ const pill: Record<string, string> = {
 const statusLabel: Record<string, string> = { leading: 'Ahead of group', on_pace: 'Mid-pack', behind: 'Lagging' };
 
 export default function BranchesPage() {
+  const ok = useRequireAdmin();
   const [range, setRange] = useRange();
   const { data, error, loading } = useApi<BranchHealth[]>(appendRange('/branches', range));
+  if (!ok) return null; // non-admin roles are redirected to Overview
   return (
     <>
       <PageHeader title="Branches" subtitle="All 5 branches · ranked vs group pace" icon={<Building2 size={18} />}>

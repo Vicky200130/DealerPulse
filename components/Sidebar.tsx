@@ -6,13 +6,19 @@ import { usePathname } from 'next/navigation';
 import { Activity, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { ThemeToggle } from './ThemeToggle';
-import { NAV } from './navItems';
+import { navForRole } from './navItems';
 import { toggleSidebar } from '@/lib/sidebar';
+import { useView, type Role } from '@/lib/view';
 
 const isCollapsed = () => document.documentElement.getAttribute('data-sidebar') === 'collapsed';
 
+const initials = (n: string) => n.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+// Read-only identity label; the floating "Viewing as" control does the switching.
+const ROLE_LABEL: Record<Role, string> = { admin: 'Group CEO', branch_manager: 'Branch manager', sales_rep: 'Sales executive' };
+
 export function Sidebar() {
   const path = usePathname();
+  const { view } = useView();
   // Peek is driven by a real mouse-ENTER (not CSS :hover), so clicking to
   // collapse while the pointer is still on the rail leaves it closed until the
   // pointer actually leaves and re-enters.
@@ -56,7 +62,7 @@ export function Sidebar() {
         </div>
 
         <nav className="flex flex-col gap-0.5">
-          {NAV.map((n) => {
+          {navForRole(view.role).map((n) => {
             const active = n.exact ? path === '/' : path.startsWith(n.href);
             const Icon = n.icon;
             return (
@@ -86,11 +92,13 @@ export function Sidebar() {
         <div className="dp-footer mt-auto flex items-center justify-between gap-2 border-t border-sidebar-border pt-3 px-1">
           <div className="flex min-w-0 items-center gap-2.5">
             <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-pill bg-primary text-primary-fg text-2xs font-bold font-display">
-              RC
+              {initials(view.name)}
             </span>
             <span className="dp-side-label min-w-0 leading-tight">
-              <span className="block truncate text-xs font-semibold">Rahul Chopra</span>
-              <span className="block truncate text-2xs text-sidebar-muted">Group CEO</span>
+              <span className="block truncate text-xs font-semibold">{view.name}</span>
+              <span className="block truncate text-2xs text-sidebar-muted">
+                {view.branchName ? `${ROLE_LABEL[view.role]} · ${view.branchName}` : ROLE_LABEL[view.role]}
+              </span>
             </span>
           </div>
           <ThemeToggle />

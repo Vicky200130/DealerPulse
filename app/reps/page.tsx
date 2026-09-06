@@ -4,12 +4,13 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowUpRight, GraduationCap, Users } from 'lucide-react';
 import { useApi } from '@/lib/useApi';
-import { useRange } from '@/lib/useFilters';
+import { useBranch, useRange } from '@/lib/useFilters';
 import { formatINR, pct } from '@/lib/format';
 import { cn } from '@/lib/cn';
 import type { LeaderRow } from '@/types';
 import { PageHeader } from '@/components/PageHeader';
-import { TimeRange, appendRange } from '@/components/TimeRange';
+import { BranchFilter } from '@/components/BranchFilter';
+import { TimeRange, appendBranch, appendRange } from '@/components/TimeRange';
 import { Card } from '@/components/ui/Card';
 import { DataTable } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
@@ -23,7 +24,8 @@ export default function RepsPage() {
   const [metric, setMetric] = useState<Metric>('revenue');
   const [coachingOnly, setCoachingOnly] = useState(false);
   const [range, setRange] = useRange();
-  const { data, error, loading } = useApi<LeaderRow[]>(appendRange('/reps', range));
+  const [branch, setBranch] = useBranch();
+  const { data, error, loading } = useApi<LeaderRow[]>(appendBranch(appendRange('/reps', range), branch));
 
   const coachCount = useMemo(() => (data ? data.filter((r) => r.needs_coaching).length : 0), [data]);
 
@@ -37,7 +39,8 @@ export default function RepsPage() {
 
   return (
     <>
-      <PageHeader title="Sales Reps" subtitle="30 reps across 5 branches" icon={<Users size={18} />}>
+      <PageHeader title="Sales Reps" subtitle={data ? `${data.length} sales reps` : 'Sales representatives'} icon={<Users size={18} />}>
+        <BranchFilter value={branch} onChange={setBranch} />
         <TimeRange value={range} onChange={setRange} />
         <Segmented<Metric>
           value={metric}

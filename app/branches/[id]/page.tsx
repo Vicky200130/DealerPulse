@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowUpRight, Building2, Car, Gauge, IndianRupee, MapPin, Target, User, Users } from 'lucide-react';
 import { useApi } from '@/lib/useApi';
 import { useRange } from '@/lib/useFilters';
+import { useRequireAdmin } from '@/lib/view';
 import { formatINR, pct } from '@/lib/format';
 import { SOURCE_LABELS } from '@/types';
 import type { BranchDetail, BranchHealth, Bottleneck, RepRow } from '@/types';
@@ -26,6 +27,7 @@ import { ErrorState } from '@/components/ui/EmptyState';
 const intFmt = (n: number) => String(Math.round(n));
 
 export default function BranchPage({ params }: { params: { id: string } }) {
+  const ok = useRequireAdmin();
   const router = useRouter();
   const [range, setRange] = useRange();
   const id = params.id.toUpperCase();
@@ -34,6 +36,7 @@ export default function BranchPage({ params }: { params: { id: string } }) {
 
   const contactStep = data?.funnel.find((f) => f.stage === 'contacted');
   const leak = contactStep?.drop ?? null;
+  if (!ok) return null; // non-admin roles are redirected to Overview
 
   return (
     <>

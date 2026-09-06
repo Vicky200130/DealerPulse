@@ -48,37 +48,53 @@ def health():
 @app.get("/api/overview")
 def overview(
     branch: Optional[str] = None,
+    rep: Optional[str] = None,
     date_from: Optional[str] = Query(None, alias="from"),
     to: Optional[str] = None,
 ):
     dfrom, dto = _d(date_from), _d(to)
+    # Scoped to one branch → break every contribution down by rep (a by-branch
+    # split would be a single, useless row); all-branches → break down by branch.
+    grp = "rep" if branch else "branch"
     leads = loader.scope_leads(branch, dfrom, dto)
     dels = loader.scope_deliveries(branch, dfrom, dto)
+    # Cascading sales-rep filter: focus the cohort cards (KPIs, funnel, monthly,
+    # models, sources) on one rep. The branch ranking / group summary / rep
+    # leaderboard below are references and stay unscoped by rep.
+    if rep:
+        leads = [l for l in leads if l["assigned_to"] == rep]
+        dels = [d for d in dels if loader.LEAD_BY_ID.get(d["lead_id"], {}).get("assigned_to") == rep]
     k = metrics.kpis(leads, dels)
-    monthly = metrics.monthly_deliveries(dels)
+    monthly = metrics.monthly_deliveries(dels, by=grp)
     return {
         "kpis": k,
-        "deltas": _period_deltas(k, branch, dfrom, dto),
+        "deltas": _period_deltas(k, branch, rep, dfrom, dto),
         "momentum": metrics.momentum(monthly),
-        "funnel": metrics.funnel(leads),
+        # Scoped to one branch → attribute the funnel to reps (a by-branch split
+        # would collapse to one row); all-branches → attribute to branches.
+        "funnel": metrics.funnel(leads, group_by=grp),
         "speed_to_lead": metrics.speed_to_lead(leads),
         "monthly": monthly,
         "branch_health": branches.branch_health(dfrom, dto),
         "group_target": branches.group_target(dfrom, dto),
         "forecast": branches.group_forecast(dfrom, dto),
+        # Present only when scoped to a branch: that branch's reps, so the overview
+        # can show a "Sales rep performance" table in place of branch ranking.
+        "reps": branches.rep_leaderboard(branch, dfrom, dto) if branch else None,
         "lost_reasons": insights.lost_reasons(leads),
-        "model_mix": deliv.model_mix(branch, dfrom, dto),
-        "source_quality": insights.source_quality(leads),
+        "model_mix": deliv.model_mix(branch, dfrom, dto, by=grp, rep=rep),
+        "source_quality": insights.source_quality(leads, by=grp),
         "now": loader.NOW.date().isoformat(),
     }
 
 
-def _period_deltas(cur: dict, branch, dfrom, dto):
+def _period_deltas(cur: dict, branch, rep, dfrom, dto):
     """Relative change vs the previous equal-length window.
 
     Returns None when no window is selected, or when the previous window would
     run off the front of the dataset — so we never compare against a period
-    that is really just missing data.
+    that is really just missing data. Honors the rep filter so the delta compares
+    like-for-like (rep-current vs rep-previous, not rep vs whole branch).
     """
     if not (dfrom and dto):
         return None
@@ -89,6 +105,9 @@ def _period_deltas(cur: dict, branch, dfrom, dto):
         return None
     p_leads = loader.scope_leads(branch, p_from, p_to)
     p_dels = loader.scope_deliveries(branch, p_from, p_to)
+    if rep:
+        p_leads = [l for l in p_leads if l["assigned_to"] == rep]
+        p_dels = [d for d in p_dels if loader.LEAD_BY_ID.get(d["lead_id"], {}).get("assigned_to") == rep]
     prev = metrics.kpis(p_leads, p_dels)
 
     def rel(key):
@@ -149,25 +168,29 @@ def rep_detail(
 def bottlenecks_ep(
     idle: int = 7,
     branch: Optional[str] = None,
+    rep: Optional[str] = None,
     search: Optional[str] = None,
     date_from: Optional[str] = Query(None, alias="from"),
     to: Optional[str] = None,
 ):
     leads = loader.scope_leads(branch, _d(date_from), _d(to))
+    if rep:  # sales-rep view: only this rep's own deals
+        leads = [l for l in leads if l["assigned_to"] == rep]
     return bottlenecks.bottlenecks(leads, idle_min=idle, search=search)
 
 
 @app.get("/api/deliveries")
 def deliveries_ep(
     branch: Optional[str] = None,
+    rep: Optional[str] = None,
     date_from: Optional[str] = Query(None, alias="from"),
     to: Optional[str] = None,
 ):
     dfrom, dto = _d(date_from), _d(to)
     return {
-        "analysis": deliv.delivery_analysis(branch, dfrom, dto),
-        "model_mix": deliv.model_mix(branch, dfrom, dto),
-        "awaiting": deliv.awaiting_orders(branch, dfrom, dto),
+        "analysis": deliv.delivery_analysis(branch, dfrom, dto, rep=rep),
+        "model_mix": deliv.model_mix(branch, dfrom, dto, rep=rep),
+        "awaiting": deliv.awaiting_orders(branch, dfrom, dto, rep=rep),
         "now": loader.NOW.date().isoformat(),
     }
 

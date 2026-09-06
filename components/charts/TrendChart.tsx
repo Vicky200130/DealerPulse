@@ -19,6 +19,7 @@ function ChartTooltip({ active, payload, label }: any) {
   const point = payload[0].payload as MonthPoint; // full month row
   const delivered = payload.find((p: any) => p.dataKey === 'delivered');
   const revenue = payload.find((p: any) => p.dataKey === 'revenue');
+  const parts = point.by_rep ?? point.by_branch; // per-rep when scoped, else per-branch
   return (
     <div className="min-w-[210px] overflow-hidden rounded-sm border border-border bg-surface text-xs shadow-md">
       <div className="px-3 pt-2 pb-2">
@@ -26,16 +27,19 @@ function ChartTooltip({ active, payload, label }: any) {
         {delivered && <div className="mt-0.5 font-mono font-semibold text-primary">{delivered.value} delivered</div>}
         {revenue && <div className="font-mono font-semibold text-success">{formatINR(revenue.value)}</div>}
       </div>
-      {point.by_branch && point.by_branch.length > 0 && (
+      {parts && parts.length > 0 && (
         <div className="flex flex-col gap-1.5 border-t border-border px-3 pt-2 pb-2.5">
-          {point.by_branch.map((b) => (
-            <div key={b.branch} className="flex items-center justify-between gap-6">
-              <span className="text-muted">{b.branch}</span>
-              <span className="font-mono font-semibold tabular-nums">
-                {b.count} · <span className="text-success">{formatINR(b.revenue)}</span>
-              </span>
-            </div>
-          ))}
+          {parts.map((b) => {
+            const nm = ('rep' in b ? b.rep : b.branch) ?? '';
+            return (
+              <div key={nm} className="flex items-center justify-between gap-6">
+                <span className="text-muted">{nm}</span>
+                <span className="font-mono font-semibold tabular-nums">
+                  {b.count} · <span className="text-success">{formatINR(b.revenue)}</span>
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

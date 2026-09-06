@@ -5,7 +5,8 @@ import { usePathname } from 'next/navigation';
 import { Activity } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { ThemeToggle } from './ThemeToggle';
-import { NAV } from './navItems';
+import { navForRole, type NavItem } from './navItems';
+import { useView } from '@/lib/view';
 
 /**
  * Below `lg` (mobile + tablet) the fixed left sidebar is hidden and navigation
@@ -17,8 +18,8 @@ import { NAV } from './navItems';
  */
 export function MobileNav() {
   const path = usePathname();
-  const isActive = (n: (typeof NAV)[number]) =>
-    n.exact ? path === '/' : path.startsWith(n.href);
+  const { view } = useView();
+  const isActive = (n: NavItem) => (n.exact ? path === '/' : path.startsWith(n.href));
 
   return (
     <>
@@ -40,7 +41,7 @@ export function MobileNav() {
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         <div className="mx-auto flex max-w-2xl items-stretch">
-          {NAV.map((n) => {
+          {navForRole(view.role).map((n) => {
             const active = isActive(n);
             const Icon = n.icon;
             return (

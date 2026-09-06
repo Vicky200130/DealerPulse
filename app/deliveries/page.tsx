@@ -2,11 +2,12 @@
 
 import { AlertTriangle, Car, Clock, Gauge, Truck } from 'lucide-react';
 import { useApi } from '@/lib/useApi';
-import { useBranch, useRange } from '@/lib/useFilters';
+import { useBranch, useRange, useRep } from '@/lib/useFilters';
 import { formatINR, pct } from '@/lib/format';
 import type { AwaitingOrder, DeliveriesResp, ModelRow } from '@/types';
 import { PageHeader } from '@/components/PageHeader';
 import { BranchFilter } from '@/components/BranchFilter';
+import { RepFilter } from '@/components/RepFilter';
 import { TimeRange, appendBranch, appendRange, rangeLabel } from '@/components/TimeRange';
 import { KpiCard } from '@/components/KpiCard';
 import { CountUp } from '@/components/CountUp';
@@ -35,7 +36,11 @@ const dp1 = (n: number) => String(Math.round(n * 10) / 10);
 export default function DeliveriesPage() {
   const [range, setRange] = useRange();
   const [branch, setBranch] = useBranch();
-  const { data, error, loading } = useApi<DeliveriesResp>(appendBranch(appendRange('/deliveries', range), branch));
+  const [rep, setRep] = useRep();
+  const base = appendBranch(appendRange('/deliveries', range), branch);
+  const { data, error, loading } = useApi<DeliveriesResp>(
+    rep ? `${base}${base.includes('?') ? '&' : '?'}rep=${rep}` : base,
+  );
   const a = data?.analysis;
   const topRev = data ? [...data.model_mix].sort((x, y) => y.revenue - x.revenue)[0] : undefined;
 
@@ -43,6 +48,7 @@ export default function DeliveriesPage() {
     <>
       <PageHeader title="Deliveries & Demand" subtitle="Delivery times and model demand" icon={<Truck size={18} />}>
         <BranchFilter value={branch} onChange={setBranch} />
+        <RepFilter branch={branch} value={rep} onChange={setRep} />
         <TimeRange value={range} onChange={setRange} />
       </PageHeader>
       <div className="p-lg flex flex-col gap-lg">

@@ -3,12 +3,14 @@
 import { useMemo, useState } from 'react';
 import { AlertTriangle, Download, Search } from 'lucide-react';
 import { useApi } from '@/lib/useApi';
-import { useBranch, useRange } from '@/lib/useFilters';
+import { useBranch, useRange, useRep } from '@/lib/useFilters';
+import { useView } from '@/lib/view';
 import { formatINR } from '@/lib/format';
 import { cn } from '@/lib/cn';
 import type { Bottleneck, BottleneckCategory, BottleneckResult } from '@/types';
 import { PageHeader } from '@/components/PageHeader';
 import { BranchFilter } from '@/components/BranchFilter';
+import { RepFilter } from '@/components/RepFilter';
 import { TimeRange, appendBranch, appendRange } from '@/components/TimeRange';
 import { Card } from '@/components/ui/Card';
 import { DataTable } from '@/components/ui/Table';
@@ -35,9 +37,14 @@ export default function BottlenecksPage() {
   const [idle, setIdle] = useState<Idle>('7');
   const [q, setQ] = useState('');
   const [cat, setCat] = useState<CatFilter>('all');
+  const { view } = useView();
   const [range, setRange] = useRange();
   const [branch, setBranch] = useBranch();
-  const { data, error, loading } = useApi<BottleneckResult>(appendBranch(appendRange(`/bottlenecks?idle=${idle}`, range), branch));
+  const [rep, setRep] = useRep();
+  // A sales exec is locked to their own deals; a manager/CEO can pick a rep to focus.
+  const effRep = view.role === 'sales_rep' ? view.repId : rep;
+  const repParam = effRep ? `&rep=${effRep}` : '';
+  const { data, error, loading } = useApi<BottleneckResult>(appendBranch(appendRange(`/bottlenecks?idle=${idle}${repParam}`, range), branch));
 
   const rows = useMemo(() => {
     if (!data) return [];
@@ -67,6 +74,7 @@ export default function BottlenecksPage() {
     <>
       <PageHeader title="Actionable Bottlenecks" subtitle="Stuck deals, sorted by what you can do about them" icon={<AlertTriangle size={18} />}>
         <BranchFilter value={branch} onChange={setBranch} />
+        <RepFilter branch={branch} value={rep} onChange={setRep} />
         <TimeRange value={range} onChange={setRange} />
         <Button onClick={exportCSV} disabled={!rows.length}>
           <Download size={13} />
