@@ -1,14 +1,14 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
 import { Building2, MapPin, User } from 'lucide-react';
 import { useApi } from '@/lib/useApi';
+import { useRange } from '@/lib/useFilters';
 import { formatINR, pct } from '@/lib/format';
 import { cn } from '@/lib/cn';
 import type { BranchHealth } from '@/types';
 import { PageHeader } from '@/components/PageHeader';
-import { TimeRange, appendRange, type RangeKey } from '@/components/TimeRange';
+import { TimeRange, appendRange } from '@/components/TimeRange';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { ErrorState } from '@/components/ui/EmptyState';
 
@@ -22,7 +22,7 @@ const pill: Record<string, string> = {
 const statusLabel: Record<string, string> = { leading: 'Ahead of group', on_pace: 'Mid-pack', behind: 'Lagging' };
 
 export default function BranchesPage() {
-  const [range, setRange] = useState<RangeKey>('all');
+  const [range, setRange] = useRange();
   const { data, error, loading } = useApi<BranchHealth[]>(appendRange('/branches', range));
   return (
     <>

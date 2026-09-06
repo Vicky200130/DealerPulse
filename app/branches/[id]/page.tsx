@@ -1,16 +1,16 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowUpRight, Building2, Car, Gauge, IndianRupee, MapPin, Target, User, Users } from 'lucide-react';
 import { useApi } from '@/lib/useApi';
+import { useRange } from '@/lib/useFilters';
 import { formatINR, pct } from '@/lib/format';
 import { SOURCE_LABELS } from '@/types';
 import type { BranchDetail, BranchHealth, Bottleneck, RepRow } from '@/types';
 import { PageHeader } from '@/components/PageHeader';
 import { PipelineForecast } from '@/components/PipelineForecast';
-import { TimeRange, appendRange, type RangeKey } from '@/components/TimeRange';
+import { TimeRange, appendRange } from '@/components/TimeRange';
 import { KpiCard } from '@/components/KpiCard';
 import { CountUp } from '@/components/CountUp';
 import { Card } from '@/components/ui/Card';
@@ -27,7 +27,7 @@ const intFmt = (n: number) => String(Math.round(n));
 
 export default function BranchPage({ params }: { params: { id: string } }) {
   const router = useRouter();
-  const [range, setRange] = useState<RangeKey>('all');
+  const [range, setRange] = useRange();
   const id = params.id.toUpperCase();
   const { data, error, loading } = useApi<BranchDetail>(appendRange(`/branches/${id}`, range));
   const { data: branches } = useApi<BranchHealth[]>('/branches');
@@ -93,7 +93,7 @@ export default function BranchPage({ params }: { params: { id: string } }) {
               />
               <KpiCard tone="warning" icon={<Target size={16} />} label="Conversion" value={<CountUp value={data.kpis.conversion} format={(n) => pct(n)} />} sub={`group ${pct(data.group_conversion)}`} />
               <KpiCard tone="warning" icon={<Gauge size={16} />} label="Attainment" value={<CountUp value={data.kpis.attainment ?? 0} format={(n) => pct(n)} />} sub={`target ${data.kpis.target_units}`} />
-              <KpiCard tone="success" icon={<IndianRupee size={16} />} label="Revenue" value={<CountUp value={data.kpis.revenue_booked} format={formatINR} />} sub="booked" />
+              <KpiCard tone="success" icon={<IndianRupee size={16} />} label="Revenue" value={<CountUp value={data.kpis.revenue_booked} format={formatINR} />} sub={`${pct(data.kpis.revenue_attainment ?? 0)} of ${formatINR(data.kpis.revenue_target ?? 0)} target`} />
             </>
           )}
         </div>
@@ -152,26 +152,25 @@ export default function BranchPage({ params }: { params: { id: string } }) {
                     key: 'name',
                     header: 'Rep',
                     render: (r) => (
-                      <div className="flex items-center gap-2">
-                        <Link href={`/reps/${r.id}`} className="font-semibold hover:text-primary">
-                          {r.name}
-                        </Link>
-                        <Badge tone={r.conversion < 0.1 ? 'danger' : r.conversion < 0.2 ? 'warning' : 'success'} mono>
-                          {pct(r.conversion)}
-                        </Badge>
-                        {r.needs_coaching && <Badge tone="warning">Coach</Badge>}
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <Link href={`/reps/${r.id}`} className="font-semibold hover:text-primary">
+                            {r.name}
+                          </Link>
+                          <Badge tone={r.conversion < 0.1 ? 'danger' : r.conversion < 0.2 ? 'warning' : 'success'} mono>
+                            {pct(r.conversion)}
+                          </Badge>
+                          {r.needs_coaching && <Badge tone="warning">Coach</Badge>}
+                        </div>
+                        {/* Follow-up discipline lives with the person, not as its own column. */}
+                        <div className="mt-0.5 text-xs text-faint">
+                          Contacted{' '}
+                          <span className={`font-mono ${r.contact_rate < 0.65 ? 'text-danger' : 'text-muted'}`}>{pct(r.contact_rate)}</span>
+                        </div>
                       </div>
                     ),
                   },
                   { key: 'delivered', header: 'Delivered', align: 'right', sortable: true, sortValue: (r) => r.delivered, render: (r) => <span className="font-mono">{r.delivered}</span> },
-                  {
-                    key: 'contact_rate',
-                    header: 'Contacted',
-                    align: 'right',
-                    sortable: true,
-                    sortValue: (r) => r.contact_rate,
-                    render: (r) => <span className={`font-mono ${r.contact_rate < 0.65 ? 'text-danger' : 'text-muted'}`}>{pct(r.contact_rate)}</span>,
-                  },
                   { key: 'active', header: 'Active', align: 'right', sortable: true, sortValue: (r) => r.active, render: (r) => <span className="font-mono">{r.active}</span> },
                   {
                     key: 'cold',

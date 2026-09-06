@@ -20,7 +20,7 @@ function NextAction({ label }: { label: string }) {
   return (
     <span
       className={
-        'inline-block rounded-sm px-2 py-1 text-2xs font-semibold whitespace-nowrap ' +
+        'inline-block rounded-sm px-2 py-1 text-2xs font-semibold ' +
         (urgent ? 'bg-danger-soft text-danger' : 'bg-primary-100 text-primary-700')
       }
     >
@@ -61,7 +61,10 @@ export function bottleneckColumns(opts?: { showRep?: boolean }): Column<Bottlene
     },
     {
       key: 'next_best_action',
-      header: '⚡ Next best action',
+      header: 'Next best action',
+      // The widest column — allow it to wrap so it yields space instead of
+      // squeezing the name/rep columns into word-by-word wrapping.
+      wrap: true,
       render: (b) => <NextAction label={b.next_best_action} />,
     },
   ];

@@ -3,11 +3,12 @@
 import { useState } from 'react';
 import { Sparkles } from 'lucide-react';
 import { useApi } from '@/lib/useApi';
+import { useBranch, useRange } from '@/lib/useFilters';
 import { formatINR, pct } from '@/lib/format';
 import { SOURCE_LABELS, type InsightsResp, type Signal, type WhatIf } from '@/types';
 import { PageHeader } from '@/components/PageHeader';
 import { BranchFilter } from '@/components/BranchFilter';
-import { TimeRange, appendBranch, appendRange, type RangeKey } from '@/components/TimeRange';
+import { TimeRange, appendBranch, appendRange } from '@/components/TimeRange';
 import { Card } from '@/components/ui/Card';
 import { ReasonBars } from '@/components/ReasonBars';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -54,8 +55,8 @@ function SignalCard({ s }: { s: Signal }) {
 }
 
 export default function InsightsPage() {
-  const [range, setRange] = useState<RangeKey>('all');
-  const [branch, setBranch] = useState('');
+  const [range, setRange] = useRange();
+  const [branch, setBranch] = useBranch();
   const { data, error, loading } = useApi<InsightsResp>(appendBranch(appendRange('/insights', range), branch));
   const [lift, setLift] = useState(10);
   const { data: wi } = useApi<WhatIf>(appendBranch(appendRange(`/whatif?lift=${lift}`, range), branch));

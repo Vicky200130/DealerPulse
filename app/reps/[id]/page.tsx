@@ -1,13 +1,13 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
 import { Car, Clock, GraduationCap, Target, Users } from 'lucide-react';
 import { useApi } from '@/lib/useApi';
+import { useRange } from '@/lib/useFilters';
 import { pct } from '@/lib/format';
 import type { Bottleneck, RepDetail } from '@/types';
 import { PageHeader } from '@/components/PageHeader';
-import { TimeRange, appendRange, type RangeKey } from '@/components/TimeRange';
+import { TimeRange, appendRange } from '@/components/TimeRange';
 import { KpiCard } from '@/components/KpiCard';
 import { CountUp } from '@/components/CountUp';
 import { Card } from '@/components/ui/Card';
@@ -22,7 +22,7 @@ const intFmt = (n: number) => String(Math.round(n));
 const dp1 = (n: number) => String(Math.round(n * 10) / 10);
 
 export default function RepPage({ params }: { params: { id: string } }) {
-  const [range, setRange] = useState<RangeKey>('all');
+  const [range, setRange] = useRange();
   const id = params.id.toUpperCase();
   const { data, error, loading } = useApi<RepDetail>(appendRange(`/reps/${id}`, range));
   const initials = data ? data.name.split(' ').map((w) => w[0]).slice(0, 2).join('') : '';

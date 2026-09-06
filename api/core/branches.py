@@ -11,8 +11,9 @@ from .loader import (
 )
 
 
-def _target_units(bid: str, dfrom: Optional[date] = None, dto: Optional[date] = None) -> int:
-    """Branch target units within [dfrom, dto], pro-rating partial months.
+def _prorated_target(bid: str, field: str, dfrom: Optional[date] = None, dto: Optional[date] = None) -> float:
+    """Sum a branch target field (target_units or target_revenue) within
+    [dfrom, dto], pro-rating partial months.
 
     Targets are set per calendar month, which doesn't divide cleanly into
     weeks. For a window that only partly covers a month we count the fraction
@@ -26,7 +27,7 @@ def _target_units(bid: str, dfrom: Optional[date] = None, dto: Optional[date] = 
         if t["branch_id"] != bid:
             continue
         if dfrom is None and dto is None:
-            total += t["target_units"]
+            total += t[field]
             continue
         y, m = (int(x) for x in t["month"].split("-"))
         m_start = date(y, m, 1)
@@ -37,8 +38,18 @@ def _target_units(bid: str, dfrom: Optional[date] = None, dto: Optional[date] = 
             continue  # no overlap with this month
         overlap = (hi - lo).days + 1
         month_days = (m_end - m_start).days + 1
-        total += t["target_units"] * overlap / month_days
-    return round(total)
+        total += t[field] * overlap / month_days
+    return total
+
+
+def _target_units(bid: str, dfrom: Optional[date] = None, dto: Optional[date] = None) -> int:
+    return round(_prorated_target(bid, "target_units", dfrom, dto))
+
+
+def _target_revenue(bid: str, dfrom: Optional[date] = None, dto: Optional[date] = None) -> int:
+    """Prorated revenue target — the money counterpart to `_target_units`, and,
+    like it, an aspirational stretch goal (≈8-9x actual bookings)."""
+    return round(_prorated_target(bid, "target_revenue", dfrom, dto))
 
 
 def _monthly_target(bid: str, dfrom: Optional[date] = None, dto: Optional[date] = None) -> int:
@@ -133,6 +144,7 @@ def branch_health(dfrom=None, dto=None) -> list:
             for d in dels if d["lead_id"] in LEAD_BY_ID
         )
         target = _target_units(b["id"], dfrom, dto)
+        rev_target = _target_revenue(b["id"], dfrom, dto)
         total_delivered += delivered
         total_target += target
         open_leads = [l for l in leads if l["status"] in OPEN_STATUSES]
@@ -149,6 +161,8 @@ def branch_health(dfrom=None, dto=None) -> list:
             "conversion": metrics.conversion(leads),
             "cold_leads": len(cold),
             "revenue": revenue,
+            "revenue_target": rev_target,
+            "revenue_attainment": round(revenue / rev_target, 4) if rev_target else 0,
             "forecast": _forecast(b["id"], dfrom, dto),
             "pipeline_forecast": {k: pf[k] for k in (
                 "projected_total", "expected_additional", "expected_additional_revenue",
@@ -174,15 +188,23 @@ def group_forecast(dfrom=None, dto=None) -> dict:
 
 def group_target(dfrom=None, dto=None) -> dict:
     """Group-wide delivered vs (aspirational) target — the honest headline that
-    keeps the group-relative branch badges from looking like a cover-up."""
+    keeps the group-relative branch badges from looking like a cover-up. Both
+    units and revenue, since the targets carry both and both run ≈8-9x hot."""
     delivered = total = 0
+    revenue = rev_target = 0
     for b in BRANCHES:
-        delivered += len(scope_deliveries(b["id"], dfrom, dto))
+        dels = scope_deliveries(b["id"], dfrom, dto)
+        delivered += len(dels)
+        revenue += sum(LEAD_BY_ID[d["lead_id"]].get("deal_value", 0) for d in dels if d["lead_id"] in LEAD_BY_ID)
         total += _target_units(b["id"], dfrom, dto)
+        rev_target += _target_revenue(b["id"], dfrom, dto)
     return {
         "delivered": delivered,
         "target_units": total,
         "attainment": round(delivered / total, 4) if total else 0,
+        "revenue": revenue,
+        "revenue_target": rev_target,
+        "revenue_attainment": round(revenue / rev_target, 4) if rev_target else 0,
     }
 
 
@@ -243,6 +265,9 @@ def branch_detail(bid: str, dfrom=None, dto=None) -> Optional[dict]:
     target = _target_units(bid, dfrom, dto)
     k["target_units"] = target
     k["attainment"] = round(k["cars_delivered"] / target, 4) if target else 0
+    rev_target = _target_revenue(bid, dfrom, dto)
+    k["revenue_target"] = rev_target
+    k["revenue_attainment"] = round(k["revenue_booked"] / rev_target, 4) if rev_target else 0
     cold = bottlenecks.bottlenecks(leads, idle_min=7)
     return {
         "id": b["id"], "name": b["name"], "city": b["city"],

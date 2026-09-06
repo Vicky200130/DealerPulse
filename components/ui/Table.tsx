@@ -12,6 +12,12 @@ export interface Column<T> {
   sortable?: boolean;
   sortValue?: (row: T) => number | string;
   render?: (row: T) => React.ReactNode;
+  /**
+   * Cells never wrap by default (so names like "Central Toyota" stay on one
+   * line and the table scrolls horizontally when cramped). Set wrap for a cell
+   * whose content should be allowed to break onto multiple lines instead.
+   */
+  wrap?: boolean;
 }
 
 export function DataTable<T>({
@@ -133,7 +139,11 @@ export function DataTable<T>({
                   {columns.map((c) => (
                     <td
                       key={c.key}
-                      className={cn('px-sm py-sm align-middle', c.align === 'right' && 'text-right whitespace-nowrap')}
+                      className={cn(
+                        'px-sm py-sm align-middle whitespace-nowrap',
+                        c.align === 'right' && 'text-right',
+                        c.wrap && 'whitespace-normal',
+                      )}
                     >
                       {c.render ? c.render(row) : ((row as Record<string, unknown>)[c.key] as React.ReactNode)}
                     </td>

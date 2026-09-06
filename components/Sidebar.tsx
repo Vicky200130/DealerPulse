@@ -71,7 +71,12 @@ export function Sidebar() {
                 )}
               >
                 {active && <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-pill bg-primary" />}
-                <Icon size={19} className={cn('shrink-0', active && 'text-primary-600')} />
+                <Icon
+                  size={19}
+                  fill={active ? 'currentColor' : 'none'}
+                  fillOpacity={active ? 0.22 : undefined}
+                  className={cn('shrink-0', active && 'text-primary-600')}
+                />
                 <span className="dp-side-label">{n.label}</span>
               </Link>
             );

@@ -4,11 +4,12 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowUpRight, GraduationCap, Users } from 'lucide-react';
 import { useApi } from '@/lib/useApi';
+import { useRange } from '@/lib/useFilters';
 import { formatINR, pct } from '@/lib/format';
 import { cn } from '@/lib/cn';
 import type { LeaderRow } from '@/types';
 import { PageHeader } from '@/components/PageHeader';
-import { TimeRange, appendRange, type RangeKey } from '@/components/TimeRange';
+import { TimeRange, appendRange } from '@/components/TimeRange';
 import { Card } from '@/components/ui/Card';
 import { DataTable } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
@@ -21,7 +22,7 @@ type Metric = 'revenue' | 'delivered' | 'avg_deal';
 export default function RepsPage() {
   const [metric, setMetric] = useState<Metric>('revenue');
   const [coachingOnly, setCoachingOnly] = useState(false);
-  const [range, setRange] = useState<RangeKey>('all');
+  const [range, setRange] = useRange();
   const { data, error, loading } = useApi<LeaderRow[]>(appendRange('/reps', range));
 
   const coachCount = useMemo(() => (data ? data.filter((r) => r.needs_coaching).length : 0), [data]);

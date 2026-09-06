@@ -25,7 +25,7 @@ export function PageHeader({
         <div className="min-w-0">
           {crumb && <div className="mb-0.5 text-xs text-faint font-mono">{crumb}</div>}
           <h1 className="text-lg font-semibold tracking-tight text-text">{title}</h1>
-          {subtitle && <div className="mt-0.5 text-sm text-muted">{subtitle}</div>}
+          {subtitle && <div className="mt-0.5 hidden text-sm text-muted lg:block">{subtitle}</div>}
         </div>
       </div>
       {children && <div className="flex items-center gap-2 flex-wrap">{children}</div>}

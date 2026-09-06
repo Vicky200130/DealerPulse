@@ -3,12 +3,13 @@
 import { useMemo, useState } from 'react';
 import { AlertTriangle, Download, Search } from 'lucide-react';
 import { useApi } from '@/lib/useApi';
+import { useBranch, useRange } from '@/lib/useFilters';
 import { formatINR } from '@/lib/format';
 import { cn } from '@/lib/cn';
 import type { Bottleneck, BottleneckCategory, BottleneckResult } from '@/types';
 import { PageHeader } from '@/components/PageHeader';
 import { BranchFilter } from '@/components/BranchFilter';
-import { TimeRange, appendBranch, appendRange, type RangeKey } from '@/components/TimeRange';
+import { TimeRange, appendBranch, appendRange } from '@/components/TimeRange';
 import { Card } from '@/components/ui/Card';
 import { DataTable } from '@/components/ui/Table';
 import { Segmented } from '@/components/ui/Segmented';
@@ -34,8 +35,8 @@ export default function BottlenecksPage() {
   const [idle, setIdle] = useState<Idle>('7');
   const [q, setQ] = useState('');
   const [cat, setCat] = useState<CatFilter>('all');
-  const [range, setRange] = useState<RangeKey>('all');
-  const [branch, setBranch] = useState('');
+  const [range, setRange] = useRange();
+  const [branch, setBranch] = useBranch();
   const { data, error, loading } = useApi<BottleneckResult>(appendBranch(appendRange(`/bottlenecks?idle=${idle}`, range), branch));
 
   const rows = useMemo(() => {

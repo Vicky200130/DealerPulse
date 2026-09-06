@@ -25,39 +25,19 @@ function Meta({ icon, label, children }: { icon: React.ReactNode; label: string;
 }
 
 /**
- * The expanded detail panel for a stuck lead: a contact/meta strip plus the
- * full stage-by-stage journey (date, dwell time and note per transition), with
- * the current stuck stage flagged. Driven entirely by the Bottleneck payload,
- * so it drops into any table that lists leads (bottlenecks, branch, rep).
+ * The expanded detail panel for a stuck lead. Two columns on desktop — the
+ * stage-by-stage journey on the left (date shown beside each step) and the
+ * contact/meta cards stacked on the right; they stack into one column on
+ * mobile. Driven entirely by the Bottleneck payload, so it drops into any
+ * table that lists leads (bottlenecks, branch, rep).
  */
 export function LeadTimeline({ lead }: { lead: Bottleneck }) {
   const journey = [...lead.status_history].sort((a, b) => (a.timestamp < b.timestamp ? -1 : 1));
 
   return (
-    <div className="dp-rise flex flex-col gap-lg p-lg">
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-        <Meta icon={<Phone size={12} />} label="Phone">
-          {lead.phone ? (
-            <a href={`tel:${lead.phone}`} className="font-mono text-primary-600 hover:underline">
-              {lead.phone}
-            </a>
-          ) : (
-            <span className="text-faint">—</span>
-          )}
-        </Meta>
-        <Meta icon={<Radio size={12} />} label="Source">
-          {SOURCE_LABELS[lead.source] ?? lead.source ?? '—'}
-        </Meta>
-        <Meta icon={<User size={12} />} label="Rep · Branch">
-          {lead.rep}
-          <span className="block text-xs text-faint">{lead.branch}</span>
-        </Meta>
-        <Meta icon={<CalendarClock size={12} />} label="Expected close">
-          {lead.expected_close_date ? fmtDate(lead.expected_close_date) : <span className="text-faint">—</span>}
-        </Meta>
-      </div>
-
-      <div>
+    <div className="dp-rise grid gap-lg p-lg lg:grid-cols-[minmax(0,1fr)_18rem]">
+      {/* Lead journey — left on desktop, second on mobile */}
+      <div className="order-2 lg:order-1">
         <div className="mb-3 text-2xs font-medium uppercase tracking-wide text-faint">Lead journey</div>
         {journey.length === 0 ? (
           <div className="text-sm text-faint">No journey recorded.</div>
@@ -80,16 +60,17 @@ export function LeadTimeline({ lead }: { lead: Bottleneck }) {
                     {last ? <MapPin size={9} /> : <Check size={9} strokeWidth={3} />}
                   </span>
                   <div className="-mt-0.5 flex-1">
-                    <div className="flex items-baseline justify-between gap-2">
+                    {/* Date sits right beside the step, then the dwell gap. */}
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                       <span className={cn('text-sm font-medium', last && 'text-danger')}>
                         {STAGE_LABELS[ev.status] ?? ev.status}
-                        {gap !== null && (
-                          <span className="ml-1.5 text-2xs font-normal text-faint">
-                            · {gap === 0 ? 'same day' : `${gap} day${gap === 1 ? '' : 's'} later`}
-                          </span>
-                        )}
                       </span>
                       <span className="font-mono text-2xs text-faint">{fmtDate(ev.timestamp)}</span>
+                      {gap !== null && (
+                        <span className="text-2xs text-faint">
+                          · {gap === 0 ? 'same day' : `${gap} day${gap === 1 ? '' : 's'} later`}
+                        </span>
+                      )}
                     </div>
                     {ev.note && <div className="mt-0.5 text-xs text-muted">{ev.note}</div>}
                     {last && (
@@ -104,6 +85,29 @@ export function LeadTimeline({ lead }: { lead: Bottleneck }) {
             })}
           </div>
         )}
+      </div>
+
+      {/* Contact / meta cards — right column on desktop, stacked first on mobile */}
+      <div className="order-1 flex flex-col gap-2.5 lg:order-2">
+        <Meta icon={<Phone size={12} />} label="Phone">
+          {lead.phone ? (
+            <a href={`tel:${lead.phone}`} className="font-mono text-primary-600 hover:underline">
+              {lead.phone}
+            </a>
+          ) : (
+            <span className="text-faint">—</span>
+          )}
+        </Meta>
+        <Meta icon={<Radio size={12} />} label="Source">
+          {SOURCE_LABELS[lead.source] ?? lead.source ?? '—'}
+        </Meta>
+        <Meta icon={<User size={12} />} label="Rep · Branch">
+          {lead.rep}
+          <span className="block text-xs text-faint">{lead.branch}</span>
+        </Meta>
+        <Meta icon={<CalendarClock size={12} />} label="Expected close">
+          {lead.expected_close_date ? fmtDate(lead.expected_close_date) : <span className="text-faint">—</span>}
+        </Meta>
       </div>
     </div>
   );

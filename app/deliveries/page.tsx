@@ -1,13 +1,13 @@
 'use client';
 
-import { useState } from 'react';
 import { AlertTriangle, Car, Clock, Gauge, Truck } from 'lucide-react';
 import { useApi } from '@/lib/useApi';
+import { useBranch, useRange } from '@/lib/useFilters';
 import { formatINR, pct } from '@/lib/format';
 import type { AwaitingOrder, DeliveriesResp, ModelRow } from '@/types';
 import { PageHeader } from '@/components/PageHeader';
 import { BranchFilter } from '@/components/BranchFilter';
-import { TimeRange, appendBranch, appendRange, rangeLabel, type RangeKey } from '@/components/TimeRange';
+import { TimeRange, appendBranch, appendRange, rangeLabel } from '@/components/TimeRange';
 import { KpiCard } from '@/components/KpiCard';
 import { CountUp } from '@/components/CountUp';
 import { Card } from '@/components/ui/Card';
@@ -33,8 +33,8 @@ const intFmt = (n: number) => String(Math.round(n));
 const dp1 = (n: number) => String(Math.round(n * 10) / 10);
 
 export default function DeliveriesPage() {
-  const [range, setRange] = useState<RangeKey>('all');
-  const [branch, setBranch] = useState('');
+  const [range, setRange] = useRange();
+  const [branch, setBranch] = useBranch();
   const { data, error, loading } = useApi<DeliveriesResp>(appendBranch(appendRange('/deliveries', range), branch));
   const a = data?.analysis;
   const topRev = data ? [...data.model_mix].sort((x, y) => y.revenue - x.revenue)[0] : undefined;

@@ -71,6 +71,9 @@ export interface GroupTarget {
   delivered: number;
   target_units: number;
   attainment: number;
+  revenue: number;
+  revenue_target: number;
+  revenue_attainment: number;
 }
 
 export interface CategoryStat {
@@ -111,6 +114,8 @@ export interface KPIs {
   pipeline_value: number;
   attainment?: number;
   target_units?: number;
+  revenue_target?: number;
+  revenue_attainment?: number;
 }
 
 export interface FunnelStep {
@@ -146,6 +151,8 @@ export interface BranchHealth {
   conversion: number;
   cold_leads: number;
   revenue: number;
+  revenue_target: number;
+  revenue_attainment: number;
   status: BranchStatus;
   forecast: Forecast;
   pipeline_forecast: BranchForecast;

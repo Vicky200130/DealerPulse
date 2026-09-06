@@ -21,7 +21,11 @@ def kpis(leads: list, deliveries: list) -> dict:
     open_leads = [l for l in leads if l["status"] in OPEN_STATUSES]
     total = len(leads)
 
-    conversion = len(won) / total if total else 0
+    # Conversion = leads that became a committed sale — order placed OR delivered
+    # (an order is a won deal, just awaiting handover). This is the lead-to-sale
+    # yield the CEO reads on the dashboard.
+    converted = len(won) + len(order_placed)
+    conversion = converted / total if total else 0
     # Win rate (close rate): of the deals that actually reached a decision, the
     # share we won. Standard sales definition — Delivered / (Delivered + Lost).
     # Still-open leads AND order_placed (committed, awaiting delivery) are left
@@ -165,10 +169,12 @@ def monthly_deliveries(deliveries: list) -> list:
 
 
 def conversion(leads: list) -> float:
+    # A lead has converted once it's a committed sale — order placed OR delivered.
     total = len(leads)
     if not total:
         return 0.0
-    return round(sum(1 for l in leads if l["status"] == "delivered") / total, 4)
+    won = sum(1 for l in leads if l["status"] in ("order_placed", "delivered"))
+    return round(won / total, 4)
 
 
 def momentum(monthly: list) -> dict:

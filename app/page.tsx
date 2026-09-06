@@ -11,7 +11,9 @@ import {
   IndianRupee,
   LayoutDashboard,
   MapPin,
+  Minus,
   Snowflake,
+  Tag,
   User,
   Users,
   Target,
@@ -21,10 +23,11 @@ import {
   XCircle,
 } from 'lucide-react';
 import { useApi } from '@/lib/useApi';
+import { useBranch, useRange } from '@/lib/useFilters';
 import { formatINR, pct } from '@/lib/format';
 import { cn } from '@/lib/cn';
 import { fmtDay, MONTHS_SHORT } from '@/lib/dates';
-import { SOURCE_LABELS, STAGE_LABELS, type BranchStatus, type FunnelStep, type Overview } from '@/types';
+import { SOURCE_LABELS, STAGE_LABELS, type BranchStatus, type Forecast, type FunnelStep, type Overview } from '@/types';
 import { PageHeader } from '@/components/PageHeader';
 import { KpiCard } from '@/components/KpiCard';
 import { CountUp } from '@/components/CountUp';
@@ -35,7 +38,7 @@ import { TrendChart } from '@/components/charts/TrendChart';
 import { CardSkeleton, Skeleton } from '@/components/ui/Skeleton';
 import { ErrorState } from '@/components/ui/EmptyState';
 import { BranchFilter } from '@/components/BranchFilter';
-import { TimeRange, appendBranch, appendRange, isPastRange, prevLabel, rangeLabel, type RangeKey } from '@/components/TimeRange';
+import { TimeRange, appendBranch, appendRange, isPastRange, prevLabel, rangeLabel } from '@/components/TimeRange';
 
 // The rank circle carries the status colour — so the data numbers themselves
 // are never coloured. Status ranks each branch against the GROUP's delivery
@@ -59,12 +62,13 @@ const STATUS_LABEL: Record<BranchStatus, string> = {
 // "vs Nov" style label from a 'YYYY-MM' month key.
 const moLabel = (ym: string) => `vs ${MONTHS_SHORT[Number(ym.split('-')[1]) - 1]}`;
 
-// Numeric columns get fixed widths so Delivered / Target / Revenue read as
-// distinct, evenly-spaced columns instead of bunching at the right edge. Below
-// lg the branch identity needs the room, so Target is dropped (least critical
-// here, and still on the branch drill-down); lg+ restores the full 5 columns.
+// Numeric columns get fixed widths so they read as distinct, evenly-spaced
+// columns instead of bunching at the right edge. Trend rides inline with
+// Delivered (no column of its own). Cold appears md+ and Target lg+ — dropped on
+// the narrowest widths where the branch identity needs the room (both are still
+// on the branch drill-down).
 const BRANCH_COLS =
-  'grid-cols-[30px_minmax(0,1fr)_72px_96px_22px] gap-x-3 md:gap-x-4 lg:grid-cols-[40px_minmax(0,1fr)_76px_60px_96px_22px]';
+  'grid-cols-[30px_minmax(0,1fr)_64px_96px_22px] gap-x-2.5 md:grid-cols-[36px_minmax(0,1fr)_68px_48px_96px_22px] md:gap-x-3 lg:grid-cols-[40px_minmax(0,1fr)_72px_56px_48px_96px_22px]';
 
 const intFmt = (n: number) => String(Math.round(n));
 
@@ -85,16 +89,16 @@ function biggestLeak(funnel: FunnelStep[]): { from: string; to: string; drop: nu
 }
 
 export default function OverviewPage() {
-  const [range, setRange] = useState<RangeKey>('all');
-  const [branch, setBranch] = useState('');
+  const [range, setRange] = useRange();
+  const [branch, setBranch] = useBranch();
   const { data, error, loading } = useApi<Overview>(appendBranch(appendRange('/overview', range), branch));
   const past = isPastRange(range);
   const dl = prevLabel(range);
 
   // Sortable numeric columns on the branch table. Default (null) keeps the
   // backend order — by attainment — which the rank circles and summary describe.
-  const [branchSort, setBranchSort] = useState<{ key: 'delivered' | 'target_units' | 'revenue'; dir: 'asc' | 'desc' } | null>(null);
-  const toggleBranchSort = (key: 'delivered' | 'target_units' | 'revenue') =>
+  const [branchSort, setBranchSort] = useState<{ key: 'delivered' | 'target_units' | 'revenue' | 'cold_leads'; dir: 'asc' | 'desc' } | null>(null);
+  const toggleBranchSort = (key: 'delivered' | 'target_units' | 'revenue' | 'cold_leads') =>
     setBranchSort((s) => (s && s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' }));
   const branchRows =
     branchSort && data
@@ -134,13 +138,14 @@ export default function OverviewPage() {
                 const revDelta = data.deltas?.revenue_booked ?? data.momentum?.revenue_booked ?? null;
                 const carsDelta = data.deltas?.cars_delivered ?? data.momentum?.cars_delivered ?? null;
                 const trendLabel = data.deltas ? dl : data.momentum ? moLabel(data.momentum.prev_month) : undefined;
+                const avgDeal = data.kpis.cars_delivered ? Math.round(data.kpis.revenue_booked / data.kpis.cars_delivered) : 0;
                 return (
                   <>
-                    <KpiCard tone="success" icon={<IndianRupee size={16} />} label="Revenue won" value={<CountUp value={data.kpis.revenue_booked} format={formatINR} />} sub="from delivered cars" delta={revDelta} deltaLabel={trendLabel} />
-                    <KpiCard tone="primary" icon={<Trophy size={16} />} label="Win rate" value={<CountUp value={data.kpis.win_rate} format={(n) => pct(n)} />} sub={`${data.kpis.won_leads} won vs ${data.kpis.lost} lost`} />
-                    <KpiCard tone="warning" icon={<Target size={16} />} label="Sales conversion" value={<CountUp value={data.kpis.conversion} format={(n) => pct(n)} />} sub={`${data.kpis.won_leads ?? Math.round(data.kpis.conversion * data.kpis.total_leads)} delivered + ${data.kpis.committed_leads} orders placed`} />
-                    <KpiCard alarm icon={<Snowflake size={16} />} label="Value at risk" value={<CountUp value={data.kpis.cold_value} format={formatINR} />} sub={<>{data.kpis.cold_leads} leads slipping · 7+ days idle{data.kpis.awaiting_leads > 0 && (<><br /><span className="text-faint">plus {data.kpis.awaiting_leads} orders awaiting delivery</span></>)}</>} />
-                    <KpiCard tone="primary" icon={<Car size={16} />} label="Cars delivered" value={<CountUp value={data.kpis.cars_delivered} format={intFmt} />} sub={`${data.kpis.total_leads} leads in scope`} delta={carsDelta} deltaLabel={trendLabel} />
+                    <KpiCard tone="success" icon={<IndianRupee size={16} />} label="Total Revenue" value={<CountUp value={data.kpis.revenue_booked} format={formatINR} />} sub="from cars sold" delta={revDelta} deltaLabel={trendLabel} />
+                    <KpiCard tone="primary" icon={<Car size={16} />} label="Cars Sold" value={<CountUp value={data.kpis.cars_delivered} format={intFmt} />} sub={`${data.kpis.total_leads} leads in scope`} delta={carsDelta} deltaLabel={trendLabel} />
+                    <KpiCard tone="warning" icon={<Target size={16} />} label="Conversion Rate" value={<CountUp value={data.kpis.conversion} format={(n) => pct(n)} />} sub={`${data.kpis.won_leads} sold + ${data.kpis.committed_leads} ordered of ${data.kpis.total_leads} leads`} />
+                    <KpiCard tone="primary" icon={<Tag size={16} />} label="Average Deal Value" value={<CountUp value={avgDeal} format={formatINR} />} sub="avg price per car sold" />
+                    <KpiCard alarm icon={<Snowflake size={16} />} label="Revenue at Risk" value={<CountUp value={data.kpis.cold_value} format={formatINR} />} sub={<>{data.kpis.cold_leads} leads slipping · 7+ days idle{data.kpis.awaiting_leads > 0 && (<><br /><span className="text-faint">plus {data.kpis.awaiting_leads} orders awaiting delivery</span></>)}</>} />
                   </>
                 );
               })()}
@@ -153,10 +158,16 @@ export default function OverviewPage() {
               <Skeleton className="h-56 w-full" />
             ) : (
               <div className="flex flex-col tabular-nums">
+                {/* Scroll horizontally on narrow screens so the branch name +
+                    status pill are never crushed; the summary notes below stay
+                    full-width and wrap normally. */}
+                <div className="overflow-x-auto">
+                <div className="max-md:min-w-[520px]">
                 <div className={cn('grid items-center px-1 pb-2 text-xs text-faint', BRANCH_COLS)}>
                   <span className="col-span-2">Branch</span>
                   <SortHeader label="Delivered" active={branchSort?.key === 'delivered'} dir={branchSort?.dir} onClick={() => toggleBranchSort('delivered')} />
                   <SortHeader label="Target" className="hidden lg:flex" active={branchSort?.key === 'target_units'} dir={branchSort?.dir} onClick={() => toggleBranchSort('target_units')} />
+                  <SortHeader label="Cold" className="hidden md:flex" active={branchSort?.key === 'cold_leads'} dir={branchSort?.dir} onClick={() => toggleBranchSort('cold_leads')} />
                   <SortHeader label="Revenue" active={branchSort?.key === 'revenue'} dir={branchSort?.dir} onClick={() => toggleBranchSort('revenue')} />
                   <span />
                 </div>
@@ -190,8 +201,12 @@ export default function OverviewPage() {
                         )}
                       </div>
                     </div>
-                    <span className="text-right font-mono text-sm">{b.delivered}</span>
+                    <span className="flex items-center justify-end gap-1 font-mono text-sm">
+                      {b.delivered}
+                      <TrendArrow f={b.forecast} />
+                    </span>
                     <span className="hidden text-right font-mono text-sm text-muted lg:block">{b.target_units}</span>
+                    <span className={cn('hidden text-right font-mono text-sm md:block', b.cold_leads > 0 ? 'text-warning' : 'text-faint')}>{b.cold_leads}</span>
                     <span className="text-right font-mono text-sm font-semibold">{formatINR(b.revenue)}</span>
                     {/* Drill-in cue: hidden at rest, fades in primary + nudge only on row hover. */}
                     <span className="flex justify-end text-primary opacity-0 transition-all duration-fast group-hover:translate-x-0.5 group-hover:opacity-100">
@@ -199,21 +214,33 @@ export default function OverviewPage() {
                     </span>
                   </Link>
                 ))}
+                </div>
+                </div>
+                <p className="mt-2 flex items-center gap-1.5 px-1 text-2xs text-faint">
+                  <TrendingUp size={12} className="shrink-0 text-success" aria-hidden />
+                  <TrendingDown size={12} className="shrink-0 text-danger" aria-hidden />
+                  <span>next to Delivered = latest month&rsquo;s cars vs the month before (improving / slipping).</span>
+                </p>
                 {(() => {
                   const gt = data.group_target;
                   const f = data.forecast;
-                  const behind = data.branch_health.filter((b) => b.status === 'behind').length;
+                  // Targets run far above real pace; show by how much (≈9× all-time),
+                  // adapting to the selected window. The table header + attention
+                  // panel already say "ranked vs pace" and name the lagging branch,
+                  // so we don't repeat that here.
+                  const mult = gt.delivered ? Math.round(gt.target_units / gt.delivered) : 0;
+                  const paceNote = mult >= 2 ? `roughly ${mult}× real pace` : 'well above real pace';
                   return (
                     <>
                       <p className="mt-3 rounded-sm bg-surface-2 px-3 py-2.5 text-sm text-muted">
-                        We&rsquo;ve delivered <span className="font-semibold text-text">{gt.delivered} of {gt.target_units.toLocaleString('en-IN')}</span> units ({pct(gt.attainment)}). Targets are set far above real sales pace. So we rank branches against each other.{behind > 0 ? ` ${behind === 1 ? 'One branch is' : `${behind} branches are`} clearly behind the rest.` : ''}
+                        Delivered <span className="font-semibold text-text">{gt.delivered} of {gt.target_units.toLocaleString('en-IN')} cars ({pct(gt.attainment)})</span> and <span className="font-semibold text-text">{formatINR(gt.revenue)} of {formatINR(gt.revenue_target)} ({pct(gt.revenue_attainment)})</span> — targets are stretch goals, {paceNote}.
                       </p>
                       <p className="mt-2 flex items-start gap-2 rounded-sm bg-primary-50 px-3 py-2.5 text-sm text-muted">
                         <TrendingUp size={16} className="mt-0.5 shrink-0 text-primary-700" />
                         <span>
-                          At the current pipeline, the group is projected to finish{' '}
-                          <span className="font-semibold text-text">~{f.projected_total} cars</span> — {f.delivered} delivered plus ~{f.projected_total - f.delivered} more expected from {f.open_leads} open deals, with{' '}
-                          <span className="font-semibold text-success">{formatINR(f.expected_additional_revenue)}</span> still winnable.
+                          Once the deals we&rsquo;re working now play out, we should finish around{' '}
+                          <span className="font-semibold text-text">{f.projected_total} cars</span> — with{' '}
+                          <span className="font-semibold text-success">{formatINR(f.expected_additional_revenue)}</span> of revenue still to win.
                         </span>
                       </p>
                     </>
@@ -409,6 +436,24 @@ export default function OverviewPage() {
         </div>
       </div>
     </>
+  );
+}
+
+// Delivery-momentum arrow shown inline with each branch's Delivered count:
+// up (green) / down (red) / flat (muted), from the run-rate forecast trend.
+// Hovering it shows the exact latest-vs-previous month delivery counts.
+function TrendArrow({ f }: { f: Forecast }) {
+  const Icon = f.trend === 'up' ? TrendingUp : f.trend === 'down' ? TrendingDown : Minus;
+  const cls = f.trend === 'up' ? 'text-success' : f.trend === 'down' ? 'text-danger' : 'text-faint';
+  const word = f.trend === 'up' ? 'improving' : f.trend === 'down' ? 'slipping' : 'steady';
+  const title =
+    f.prev_month != null
+      ? `Deliveries ${word}: ${f.last_month} in the latest month vs ${f.prev_month} the month before`
+      : `Deliveries ${word}`;
+  return (
+    <span title={title} aria-label={title} className={cn('inline-flex shrink-0', cls)}>
+      <Icon size={13} aria-hidden />
+    </span>
   );
 }
 

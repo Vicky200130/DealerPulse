@@ -56,7 +56,12 @@ export function MobileNav() {
                 {active && (
                   <span className="absolute inset-x-3 top-0 h-0.5 rounded-pill bg-primary" />
                 )}
-                <Icon size={20} className={cn('shrink-0', active && 'text-primary-600')} />
+                <Icon
+                  size={20}
+                  fill={active ? 'currentColor' : 'none'}
+                  fillOpacity={active ? 0.22 : undefined}
+                  className={cn('shrink-0', active && 'text-primary-600')}
+                />
                 <span className="text-3xs font-medium leading-none tracking-tight whitespace-nowrap">
                   {n.short ?? n.label}
                 </span>

@@ -110,9 +110,12 @@ export function RankedBars({
                     )}
                   </div>
                   {!inside && (
-                    <div className="pointer-events-none absolute inset-y-0 flex items-center gap-2 whitespace-nowrap" style={{ left: `calc(${w}% + 8px)` }}>
-                      <span className="text-xs font-medium text-muted">{it.label}</span>
-                      <span className="font-mono text-sm font-semibold text-text">{it.value}</span>
+                    // Span from the bar end to the track's right edge (right-0) so
+                    // a long label truncates instead of spilling off-screen; the
+                    // count stays pinned and visible.
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center gap-2" style={{ left: `calc(${w}% + 8px)` }}>
+                      <span className="min-w-0 truncate text-xs font-medium text-muted" title={it.label}>{it.label}</span>
+                      <span className="shrink-0 font-mono text-sm font-semibold text-text">{it.value}</span>
                     </div>
                   )}
                 </div>

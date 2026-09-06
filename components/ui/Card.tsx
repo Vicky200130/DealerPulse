@@ -13,7 +13,7 @@ export function Card({
 }) {
   const hasHeader = title || hint;
   return (
-    <section className={cn('relative flex flex-col rounded bg-surface shadow-[var(--shadow-card)]', className)}>
+    <section className={cn('relative flex min-w-0 flex-col rounded bg-surface shadow-[var(--shadow-card)]', className)}>
       {hasHeader && (
         <header className="flex items-center justify-between gap-sm px-md pt-md pb-sm">
           {title && <h3 className="text-md font-semibold text-text">{title}</h3>}

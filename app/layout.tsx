@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 import './globals.css';
 import { Sidebar } from '@/components/Sidebar';
 import { MobileNav } from '@/components/MobileNav';
@@ -28,7 +29,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Sidebar />
           <main className="min-w-0 flex-1 pb-[calc(64px_+_env(safe-area-inset-bottom))] lg:pb-0">
             <MobileNav />
-            {children}
+            {/* Suspense boundary so pages can read filters from the URL
+                (useSearchParams) without bailing the production build. */}
+            <Suspense>{children}</Suspense>
           </main>
         </div>
       </body>
