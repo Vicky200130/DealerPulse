@@ -7,7 +7,7 @@ import { STAGE_LABELS, type Bottleneck, type BottleneckCategory } from '@/types'
 // row is a sales follow-up, a delivery chase, or a dead deal to close — the
 // distinction the old flat "Health: 0" column hid.
 const CATEGORY_META: Record<BottleneckCategory, { label: string; cls: string }> = {
-  follow_up: { label: 'Follow-up', cls: 'bg-primary-100 text-primary-700' },
+  follow_up: { label: 'Active deal', cls: 'bg-primary-100 text-primary-700' },
   delivery: { label: 'Delivery', cls: 'bg-warning-soft text-warning' },
   stale: { label: 'Likely dead', cls: 'bg-surface-2 text-muted' },
 };
@@ -38,7 +38,10 @@ export function bottleneckColumns(opts?: { showRep?: boolean }): Column<Bottlene
         <div>
           <div className="font-semibold">{b.customer_name}</div>
           <div className="text-xs text-faint">
-            {b.model} · {STAGE_LABELS[b.status] ?? b.status}
+            {b.model} ·{' '}
+            {b.category === 'delivery'
+              ? `Ordered — waiting ${b.days_since_order} ${b.days_since_order === 1 ? 'day' : 'days'} for delivery`
+              : STAGE_LABELS[b.status] ?? b.status}
           </div>
         </div>
       ),

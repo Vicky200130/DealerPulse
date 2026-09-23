@@ -15,7 +15,15 @@ months-old orders and made every row read "Confirm delivery timeline".
 """
 from typing import Optional
 
-from .loader import OPEN_STATUSES, STALE_DAYS, REP_BY_ID, branch_name, idle_days
+from .loader import OPEN_STATUSES, STALE_DAYS, NOW, REP_BY_ID, branch_name, idle_days, parse_dt
+
+
+def _days_since_order(lead: dict) -> int:
+    """Days a lead has sat in 'order placed' — from the actual order timestamp
+    (not last activity), so a delivery chase can read true wait time."""
+    ts = next((h["timestamp"] for h in lead.get("status_history", []) if h["status"] == "order_placed"), None)
+    placed = parse_dt(ts) if ts else None
+    return (NOW - placed).days if placed else 0
 
 STAGE_BASE = {
     "new": 30,
@@ -80,6 +88,9 @@ def score_lead(lead: dict) -> dict:
         "rep": rep.get("name", lead["assigned_to"]),
         "branch": branch_name(lead["branch_id"]),
         "idle_days": idle,
+        # For 'delivery' rows the meaningful clock is time-since-order, not idle;
+        # the UI reads this to say "Ordered — waiting N days for delivery".
+        "days_since_order": _days_since_order(lead) if lead["status"] == "order_placed" else 0,
         "health": health,
         "category": category,
         "next_best_action": _next_best_action(lead["status"], idle, category),

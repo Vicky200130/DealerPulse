@@ -18,9 +18,12 @@ export function RepFilter({
   onChange: (v: string) => void;
 }) {
   const { view } = useView();
-  const { data } = useApi<LeaderRow[]>(branch ? `/reps?branch=${branch}` : '');
   // Only meaningful within a branch, and never for a sales exec (they are the rep).
-  if (!branch || view.role === 'sales_rep') return null;
+  // Fetch only when the dropdown will actually render, so a sales_rep never fires
+  // a /reps request that 403s and renders nothing.
+  const show = !!branch && view.user_role !== 'sales_rep';
+  const { data } = useApi<LeaderRow[]>(show ? `/reps?branch=${branch}` : '');
+  if (!show) return null;
   const options = [
     { label: 'All reps', value: '' },
     ...(data ?? []).map((r) => ({ label: r.name, value: r.id })),

@@ -11,10 +11,11 @@ Common query params:
 from datetime import timedelta
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from .core import loader, metrics, branches, bottlenecks, deliveries as deliv, whatif, insights
+from .core import loader, metrics, branches, bottlenecks, deliveries as deliv, whatif, insights, auth
+from .core.auth import Ctx, get_ctx
 
 app = FastAPI(title="DealerPulse API")
 
@@ -51,7 +52,9 @@ def overview(
     rep: Optional[str] = None,
     date_from: Optional[str] = Query(None, alias="from"),
     to: Optional[str] = None,
+    ctx: Ctx = Depends(get_ctx),
 ):
+    branch, rep = auth.effective_scope(ctx, branch, rep)
     dfrom, dto = _d(date_from), _d(to)
     # Scoped to one branch → break every contribution down by rep (a by-branch
     # split would be a single, useless row); all-branches → break down by branch.
@@ -82,6 +85,8 @@ def overview(
         # can show a "Sales rep performance" table in place of branch ranking.
         "reps": branches.rep_leaderboard(branch, dfrom, dto) if branch else None,
         "lost_reasons": insights.lost_reasons(leads),
+        # Customers lost to a rival + the money that walked, for the funnel callout.
+        "lost_to_rivals": insights.competitor_losses(leads),
         "model_mix": deliv.model_mix(branch, dfrom, dto, by=grp, rep=rep),
         "source_quality": insights.source_quality(leads, by=grp),
         "now": loader.NOW.date().isoformat(),
@@ -127,7 +132,10 @@ def _period_deltas(cur: dict, branch, rep, dfrom, dto):
 def list_branches(
     date_from: Optional[str] = Query(None, alias="from"),
     to: Optional[str] = None,
+    ctx: Ctx = Depends(get_ctx),
 ):
+    # Cross-branch group view — admins only.
+    auth.require_admin(ctx)
     return branches.branch_health(_d(date_from), _d(to))
 
 
@@ -136,7 +144,10 @@ def branch_detail(
     bid: str,
     date_from: Optional[str] = Query(None, alias="from"),
     to: Optional[str] = None,
+    ctx: Ctx = Depends(get_ctx),
 ):
+    # Admins see any branch; a manager only their own.
+    auth.require_branch_access(ctx, bid)
     detail = branches.branch_detail(bid, _d(date_from), _d(to))
     if not detail:
         raise HTTPException(status_code=404, detail=f"Branch {bid} not found")
@@ -148,7 +159,13 @@ def list_reps(
     branch: Optional[str] = None,
     date_from: Optional[str] = Query(None, alias="from"),
     to: Optional[str] = None,
+    ctx: Ctx = Depends(get_ctx),
 ):
+    # Admins see everyone; a manager only their own branch's reps; a sales rep
+    # has no cross-rep list (their nav never reaches it).
+    if ctx.role == auth.SALES_REP:
+        raise HTTPException(status_code=403, detail="Not permitted for this role")
+    branch, _ = auth.effective_scope(ctx, branch, None)
     return branches.rep_leaderboard(branch, _d(date_from), _d(to))
 
 
@@ -157,7 +174,13 @@ def rep_detail(
     rid: str,
     date_from: Optional[str] = Query(None, alias="from"),
     to: Optional[str] = None,
+    ctx: Ctx = Depends(get_ctx),
 ):
+    rep = loader.REP_BY_ID.get(rid)
+    if not rep:
+        raise HTTPException(status_code=404, detail=f"Rep {rid} not found")
+    # Admins see anyone; a manager reps in their branch; a rep only themselves.
+    auth.require_rep_access(ctx, rep.get("branch_id", ""), rid)
     detail = branches.rep_detail(rid, _d(date_from), _d(to))
     if not detail:
         raise HTTPException(status_code=404, detail=f"Rep {rid} not found")
@@ -172,7 +195,9 @@ def bottlenecks_ep(
     search: Optional[str] = None,
     date_from: Optional[str] = Query(None, alias="from"),
     to: Optional[str] = None,
+    ctx: Ctx = Depends(get_ctx),
 ):
+    branch, rep = auth.effective_scope(ctx, branch, rep)
     leads = loader.scope_leads(branch, _d(date_from), _d(to))
     if rep:  # sales-rep view: only this rep's own deals
         leads = [l for l in leads if l["assigned_to"] == rep]
@@ -185,7 +210,9 @@ def deliveries_ep(
     rep: Optional[str] = None,
     date_from: Optional[str] = Query(None, alias="from"),
     to: Optional[str] = None,
+    ctx: Ctx = Depends(get_ctx),
 ):
+    branch, rep = auth.effective_scope(ctx, branch, rep)
     dfrom, dto = _d(date_from), _d(to)
     return {
         "analysis": deliv.delivery_analysis(branch, dfrom, dto, rep=rep),
@@ -200,7 +227,9 @@ def insights_ep(
     branch: Optional[str] = None,
     date_from: Optional[str] = Query(None, alias="from"),
     to: Optional[str] = None,
+    ctx: Ctx = Depends(get_ctx),
 ):
+    branch, _ = auth.effective_scope(ctx, branch, None)
     dfrom, dto = _d(date_from), _d(to)
     leads = loader.scope_leads(branch, dfrom, dto)
     dels = loader.scope_deliveries(branch, dfrom, dto)
@@ -220,5 +249,7 @@ def whatif_ep(
     branch: Optional[str] = None,
     date_from: Optional[str] = Query(None, alias="from"),
     to: Optional[str] = None,
+    ctx: Ctx = Depends(get_ctx),
 ):
+    branch, _ = auth.effective_scope(ctx, branch, None)
     return whatif.simulate(lift, branch, _d(date_from), _d(to))

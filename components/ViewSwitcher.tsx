@@ -3,9 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, GripVertical } from 'lucide-react';
 import { cn } from '@/lib/cn';
-import { useApi } from '@/lib/useApi';
 import { useView, type Role, type View } from '@/lib/view';
-import type { BranchHealth, LeaderRow } from '@/types';
 
 const initials = (name: string) =>
   name
@@ -21,20 +19,28 @@ const ROLE_LABEL: Record<Role, string> = {
   sales_rep: 'Sales executive',
 };
 
-const subLabel = (v: View) => (v.branchName ? `${ROLE_LABEL[v.role]} · ${v.branchName}` : ROLE_LABEL[v.role]);
-const sameView = (a: View, b: View) => a.role === b.role && a.branchId === b.branchId && a.repId === b.repId;
+const subLabel = (v: View) => (v.branch_name ? `${ROLE_LABEL[v.user_role]} · ${v.branch_name}` : ROLE_LABEL[v.user_role]);
+const sameView = (a: View, b: View) => a.user_role === b.user_role && a.branch_id === b.branch_id && a.rep_id === b.rep_id;
+
+// Three fixed demo personas — real people from the dataset (Eastside / B5). They
+// are seeded statically rather than fetched, because /branches and /reps are now
+// admin-only: a manager or rep must still be able to switch back to the CEO, so
+// the switcher can't depend on endpoints their own role can't call.
+const PERSONAS: View[] = [
+  { user_role: 'admin', name: 'Rahul Chopra' },
+  { user_role: 'branch_manager', name: 'Vikram Desai', branch_id: 'B5', branch_name: 'Eastside Toyota' },
+  { user_role: 'sales_rep', name: 'Sanjay Kulkarni', branch_id: 'B5', branch_name: 'Eastside Toyota', rep_id: 'SR29' },
+];
 
 /**
- * Floating "Viewing as" control — there's no auth, so this demonstrates the
- * role-scoped views. It sits bottom-right, on top of everything, and is draggable
- * anywhere so it never hides what's behind it. Three fixed personas: the CEO, one
- * branch manager (Eastside), and one sales executive (Eastside), all real people
- * from the data. Clicking re-scopes the whole app.
+ * Floating "Viewing as" control — the role is the demo stand-in for auth, so this
+ * re-scopes the whole app (nav + data, backend-enforced). It sits bottom-right,
+ * on top of everything, and is draggable anywhere so it never hides what's
+ * behind it. Three fixed personas: the CEO, one branch manager, one sales
+ * executive — all real people from the data.
  */
 export function ViewSwitcher() {
   const { view, setView } = useView();
-  const { data: branches } = useApi<BranchHealth[]>('/branches');
-  const { data: reps } = useApi<LeaderRow[]>('/reps');
   const [open, setOpen] = useState(false);
 
   // Position: null = default corner (via CSS); once dragged, an absolute point.
@@ -42,17 +48,7 @@ export function ViewSwitcher() {
   const rootRef = useRef<HTMLDivElement>(null);
   const drag = useRef({ px: 0, py: 0, left: 0, top: 0, active: false, moved: false });
 
-  // Build the three personas from real data (Eastside's manager + top rep).
-  const east =
-    (branches ?? []).find((b) => /eastside/i.test(b.name)) ?? (branches ?? []).find((b) => b.manager) ?? null;
-  const topRep = east ? (reps ?? []).find((r) => r.branch === east.name) ?? null : null;
-  const personas: View[] = [
-    { role: 'admin', name: 'Rahul Chopra' },
-    ...(east ? [{ role: 'branch_manager' as const, name: east.manager, branchId: east.id, branchName: east.name }] : []),
-    ...(east && topRep
-      ? [{ role: 'sales_rep' as const, name: topRep.name, branchId: east.id, branchName: east.name, repId: topRep.id }]
-      : []),
-  ];
+  const personas = PERSONAS;
 
   useEffect(() => {
     if (!open) return;
@@ -122,7 +118,7 @@ export function ViewSwitcher() {
             const current = sameView(p, view);
             return (
               <button
-                key={`${p.role}:${p.branchId ?? ''}:${p.repId ?? ''}`}
+                key={`${p.user_role}:${p.branch_id ?? ''}:${p.rep_id ?? ''}`}
                 type="button"
                 role="menuitemradio"
                 aria-checked={current}
@@ -167,7 +163,7 @@ export function ViewSwitcher() {
         <span className="min-w-0 leading-tight text-left">
           <span className="block text-3xs font-semibold uppercase tracking-wide text-faint">Viewing as</span>
           <span className="block truncate text-xs font-semibold text-text">
-            {view.name} <span className="font-normal text-muted">· {ROLE_LABEL[view.role]}</span>
+            {view.name} <span className="font-normal text-muted">· {ROLE_LABEL[view.user_role]}</span>
           </span>
         </span>
         <ChevronDown size={15} className={cn('shrink-0 text-faint transition-transform duration-fast', open && 'rotate-180')} />

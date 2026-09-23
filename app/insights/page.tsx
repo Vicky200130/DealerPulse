@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Sparkles } from 'lucide-react';
 import { useApi } from '@/lib/useApi';
 import { useBranch, useRange } from '@/lib/useFilters';
@@ -11,6 +11,7 @@ import { BranchFilter } from '@/components/BranchFilter';
 import { TimeRange, appendBranch, appendRange } from '@/components/TimeRange';
 import { Card } from '@/components/ui/Card';
 import { ReasonBars } from '@/components/ReasonBars';
+import { emphasize } from '@/components/Emphasize';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState, ErrorState } from '@/components/ui/EmptyState';
 
@@ -44,7 +45,7 @@ function SignalCard({ s }: { s: Signal }) {
           <span className={`font-mono text-3xl font-semibold leading-none ${c.value}`}>{s.value}</span>
           <span className="text-sm font-semibold text-muted">{s.unit}</span>
         </div>
-        <p className="mt-2.5 text-sm leading-relaxed text-text">{s.verdict}</p>
+        <p className="mt-2.5 text-sm leading-relaxed text-text">{emphasize(s.verdict)}</p>
         <p className="mt-3 flex items-baseline gap-1.5 text-xs text-muted">
           <span className="font-bold text-primary">→</span>
           <span><b className="font-semibold text-text">Do:</b> {s.action}</span>
@@ -59,7 +60,13 @@ export default function InsightsPage() {
   const [branch, setBranch] = useBranch();
   const { data, error, loading } = useApi<InsightsResp>(appendBranch(appendRange('/insights', range), branch));
   const [lift, setLift] = useState(10);
-  const { data: wi } = useApi<WhatIf>(appendBranch(appendRange(`/whatif?lift=${lift}`, range), branch));
+  // Debounce the slider so a drag fires one /whatif call, not one per tick.
+  const [liftFetch, setLiftFetch] = useState(10);
+  useEffect(() => {
+    const t = setTimeout(() => setLiftFetch(lift), 250);
+    return () => clearTimeout(t);
+  }, [lift]);
+  const { data: wi } = useApi<WhatIf>(appendBranch(appendRange(`/whatif?lift=${liftFetch}`, range), branch));
 
   const leakRows = (data?.leak.rows ?? []).filter((r) => r.value > 0);
   const leakMax = Math.max(...leakRows.map((r) => r.value), 1);
@@ -116,11 +123,13 @@ export default function InsightsPage() {
                     <div
                       key={r.stage}
                       style={{ animationDelay: `${i * 55}ms` }}
-                      className="dp-rise grid grid-cols-[120px_1fr_84px] sm:grid-cols-[160px_1fr_96px] items-center gap-3"
+                      className="dp-rise grid grid-cols-[150px_1fr_84px] sm:grid-cols-[200px_1fr_96px] items-center gap-3"
                     >
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-text">{r.label}</div>
-                        <div className="truncate text-2xs text-faint">{r.desc}</div>
+                        {/* Full label — wraps to two lines rather than truncating;
+                            the bar just gives up a little width. */}
+                        <div className="text-sm font-semibold leading-snug text-text">{r.label}</div>
+                        <div className="text-2xs leading-tight text-faint">{r.desc}</div>
                       </div>
                       <div className="h-8 overflow-hidden rounded bg-surface-2">
                         <div
@@ -182,7 +191,8 @@ export default function InsightsPage() {
                   </div>
                   <p className="mt-3 rounded bg-surface-2 px-2.5 py-2 text-xs text-muted">
                     <span className="font-bold text-primary">→</span>{' '}
-                    <b className="text-text">Do:</b> staff the floor for {(SOURCE_LABELS[best.source] ?? best.source).toLowerCase()} &amp; push referrals; rethink low-yield channels.
+                    <b className="text-text">Do:</b> Ask every branch manager to bring in more {(SOURCE_LABELS[best.source] ?? best.source).toLowerCase()} customers — they convert best ({pct(best.rate)})
+                    {gap >= 2 && <>, {gap}× better than {(SOURCE_LABELS[worst.source] ?? worst.source).toLowerCase()} ({pct(worst.rate)})</>}.
                   </p>
                 </>
               ) : (
@@ -190,21 +200,21 @@ export default function InsightsPage() {
               )}
             </Card>
 
-            <Card title="The money already left">
+            <Card title="Money at risk">
               {loading || !data ? (
                 <Skeleton className="h-44 w-full" />
               ) : (
                 <>
                   <div className="flex items-baseline gap-2">
                     <span className="font-mono text-2xl font-semibold text-text">{formatINR(data.kpis.cold_value)}</span>
-                    <span className="text-sm font-semibold text-muted">in cold open deals now</span>
+                    <span className="text-sm font-semibold text-muted">at risk</span>
                   </div>
                   <p className="mt-3 rounded bg-surface-2 px-2.5 py-2 text-xs text-muted">
-                    Pipeline hygiene today is fine — the real losses, <b className="text-text">{formatINR(data.leak.total_value)}</b>,
-                    already happened <b className="text-text">upstream at first contact.</b>
+                    {data.kpis.cold_leads} leads have gone cold — no contact in 7+ days. If we don’t call them, this{' '}
+                    <b className="text-text">{formatINR(data.kpis.cold_value)}</b> is what we lose next.
                   </p>
                   <p className="mt-2.5 rounded bg-surface-2 px-2.5 py-2 text-xs text-muted">
-                    So the priority isn’t chasing stuck deals — it’s never dropping a new lead again.
+                    Most of our losses (<b className="text-text">{formatINR(data.leak.total_value)}</b>) already happened earlier, at first contact — so the bigger fix is never dropping a new lead.
                   </p>
                 </>
               )}
@@ -224,8 +234,8 @@ export default function InsightsPage() {
               <div className="grid gap-lg md:grid-cols-2">
                 <div>
                   <div className="text-sm text-muted">
-                    If <b className="text-text">test-drive → order</b> conversion improves by{' '}
-                    <b className="text-primary">+{lift} points</b> ({pct(wi.current_rate)} → {pct(wi.projected_rate)})
+                    <b className="text-text">{wi.test_drives} leads</b> took a test drive, and{' '}
+                    <b className="text-text">{Math.round(wi.test_drives * wi.current_rate)} of them ({pct(wi.current_rate)})</b> placed an order. Drag the slider to ask: what if more of them ordered?
                   </div>
                   <input
                     type="range"
@@ -237,11 +247,15 @@ export default function InsightsPage() {
                     style={{ accentColor: 'var(--primary-500)' }}
                   />
                   <div className="flex justify-between font-mono text-xs text-faint">
-                    <span>0%</span>
-                    <span>+{lift}%</span>
-                    <span>+25%</span>
+                    <span>No change</span>
+                    <span className="text-primary">+{lift}%</span>
+                    <span>Big push (+25%)</span>
                   </div>
-                  <div className="mt-4 flex items-baseline gap-2.5">
+                  <p className="mt-4 text-sm text-muted">
+                    If <b className="text-text">{wi.lift_pct}% more order</b> — {wi.additional_orders} more cars ({Math.round(wi.test_drives * wi.current_rate)} → {Math.round(wi.test_drives * wi.current_rate) + wi.additional_orders}) — you get{' '}
+                    <b className="text-success">+{formatINR(wi.additional_revenue)}</b> in revenue.
+                  </p>
+                  <div className="mt-3 flex items-baseline gap-2.5">
                     <span className="font-mono text-3xl font-semibold leading-none text-success">
                       +{formatINR(wi.additional_revenue)}
                     </span>
@@ -254,7 +268,7 @@ export default function InsightsPage() {
                     color="success"
                     items={[
                       { label: 'Current', value: wi.current_revenue, display: formatINR(wi.current_revenue) },
-                      { label: 'Modelled', value: wi.projected_revenue, display: formatINR(wi.projected_revenue) },
+                      { label: 'Projected', value: wi.projected_revenue, display: formatINR(wi.projected_revenue) },
                     ]}
                   />
                   <p className="mt-3 rounded bg-surface-2 px-2.5 py-2 text-xs text-faint">

@@ -65,26 +65,21 @@ export default function BranchesPage() {
                   <div className="text-2xs uppercase text-faint">Total revenue</div>
                   <div className="font-mono text-lg font-semibold">{formatINR(b.revenue)}</div>
                 </div>
-                <div className="mt-3 grid grid-cols-3 gap-2 font-mono text-sm">
+                <div className="mt-3 grid grid-cols-2 gap-2 font-mono text-sm">
                   <div className="flex flex-col">
-                    <span className="text-2xs uppercase text-faint leading-tight min-h-[24px]">Cars delivered</span>
-                    {b.delivered}
+                    {/* A plain fraction that carries what 15% is a share of. */}
+                    <span className="text-2xs uppercase text-faint leading-tight min-h-[24px]">Sold</span>
+                    {b.delivered} of {b.target_units} ({pct(b.attainment)})
                   </div>
                   <div className="flex flex-col">
-                    <span className="text-2xs uppercase text-faint leading-tight min-h-[24px]">Attain</span>
-                    {pct(b.attainment)}
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-2xs uppercase text-faint leading-tight min-h-[24px]">Cold leads</span>
-                    {b.cold_leads}
+                    <span className="text-2xs uppercase text-faint leading-tight min-h-[24px]">Going cold (7d+)</span>
+                    <span className={b.cold_leads > 0 ? 'text-warning' : ''}>{b.cold_leads}</span>
                   </div>
                 </div>
-                <div className="mt-3 flex items-center justify-between gap-2 rounded-sm bg-surface-2 px-2.5 py-2 text-xs">
-                  <span className="text-faint">Projected finish</span>
-                  <span className="font-mono font-semibold tabular-nums text-text">
-                    ~{b.pipeline_forecast.projected_total} cars
-                    <span className="ml-1.5 font-normal text-success">+{formatINR(b.pipeline_forecast.expected_additional_revenue)}</span>
-                  </span>
+                <div className="mt-3 rounded-sm bg-surface-2 px-2.5 py-2 text-xs text-muted">
+                  On track to finish{' '}
+                  <span className="font-mono font-semibold tabular-nums text-text">~{b.pipeline_forecast.projected_total} cars</span> ·{' '}
+                  <span className="font-mono font-semibold tabular-nums text-success">{formatINR(b.pipeline_forecast.expected_additional_revenue)}</span> still to win
                 </div>
               </Link>
             ))}

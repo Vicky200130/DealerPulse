@@ -13,3 +13,12 @@ export function formatNumber(value: number): string {
 export function pct(value: number, digits = 0): string {
   return `${(value * 100).toFixed(digits)}%`;
 }
+
+// A number shown as the fraction it's a share of, e.g. frac(47, 313) → "47 of
+// 313 (15%)". The house rule across the app: never a bare % — always say what it
+// is a share of. `verb` lets a caller read it as "Sold 47 of 313 (15%)".
+export function frac(part: number, whole: number, verb?: string): string {
+  const rate = whole ? part / whole : 0;
+  const head = verb ? `${verb} ${part}` : `${part}`;
+  return `${head} of ${whole.toLocaleString('en-IN')} (${pct(rate)})`;
+}

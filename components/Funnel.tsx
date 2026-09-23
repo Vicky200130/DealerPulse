@@ -5,6 +5,7 @@ import { Users } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { STAGE_LABELS, type FunnelStep } from '@/types';
 import { EmptyState } from './ui/EmptyState';
+import { Emphasize } from './Emphasize';
 
 // The bar track sits after the rank badge and runs to the card edge.
 const TRACK = { left: 36, right: 0 };
@@ -149,7 +150,9 @@ export function Funnel({ steps, note }: { steps: FunnelStep[]; note?: React.Reac
       </div>
 
       {note && (
-        <div className="mt-3 rounded-sm bg-warning-soft px-2.5 py-2 text-xs font-medium text-warning">{note}</div>
+        <div className="mt-3 rounded-sm bg-warning-soft px-2.5 py-2 text-xs font-medium text-warning">
+          <Emphasize>{note}</Emphasize>
+        </div>
       )}
     </div>
   );

@@ -36,6 +36,7 @@ import { Funnel } from '@/components/Funnel';
 import { RankedBars } from '@/components/RankedBars';
 import { RepPerformance } from '@/components/RepPerformance';
 import { SalesRepOverview } from '@/components/SalesRepOverview';
+import { emphasize } from '@/components/Emphasize';
 import { TrendChart } from '@/components/charts/TrendChart';
 import { CardSkeleton, Skeleton } from '@/components/ui/Skeleton';
 import { ErrorState } from '@/components/ui/EmptyState';
@@ -68,11 +69,11 @@ const moLabel = (ym: string) => `vs ${MONTHS_SHORT[Number(ym.split('-')[1]) - 1]
 
 // Numeric columns get fixed widths so they read as distinct, evenly-spaced
 // columns instead of bunching at the right edge. Trend rides inline with
-// Delivered (no column of its own). Cold appears md+ and Target lg+ — dropped on
-// the narrowest widths where the branch identity needs the room (both are still
-// on the branch drill-down).
+// Delivered (no column of its own). Cold appears md+. The branch's target is a
+// sub-line under its name (with the % beside the name), so the name column keeps
+// its room and never truncates — no separate Target column crowding the row.
 const BRANCH_COLS =
-  'grid-cols-[30px_minmax(0,1fr)_64px_96px_22px] gap-x-2.5 md:grid-cols-[36px_minmax(0,1fr)_68px_48px_96px_22px] md:gap-x-3 lg:grid-cols-[40px_minmax(0,1fr)_72px_56px_48px_96px_22px]';
+  'grid-cols-[30px_minmax(0,1fr)_64px_96px_22px] gap-x-2.5 md:grid-cols-[36px_minmax(0,1fr)_68px_48px_96px_22px] md:gap-x-3 lg:grid-cols-[40px_minmax(0,1fr)_72px_56px_96px_22px]';
 
 const intFmt = (n: number) => String(Math.round(n));
 
@@ -98,7 +99,7 @@ export default function OverviewPage() {
   // branch summary; the CEO always sees the cross-branch ranking + group summary,
   // even with a branch filter applied. The branch/rep filters only scope the
   // cohort cards (KPIs, funnel, trend, models, sources).
-  const isManager = view.role === 'branch_manager';
+  const isManager = view.user_role === 'branch_manager';
   const [range, setRange] = useRange();
   const [branch, setBranch] = useBranch();
   const [rep, setRep] = useRep();
@@ -111,8 +112,8 @@ export default function OverviewPage() {
 
   // Sortable numeric columns on the branch table. Default (null) keeps the
   // backend order — by attainment — which the rank circles and summary describe.
-  const [branchSort, setBranchSort] = useState<{ key: 'delivered' | 'target_units' | 'revenue' | 'cold_leads'; dir: 'asc' | 'desc' } | null>(null);
-  const toggleBranchSort = (key: 'delivered' | 'target_units' | 'revenue' | 'cold_leads') =>
+  const [branchSort, setBranchSort] = useState<{ key: 'delivered' | 'revenue' | 'cold_leads'; dir: 'asc' | 'desc' } | null>(null);
+  const toggleBranchSort = (key: 'delivered' | 'revenue' | 'cold_leads') =>
     setBranchSort((s) => (s && s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' }));
   const branchRows =
     branchSort && data
@@ -129,8 +130,8 @@ export default function OverviewPage() {
 
   // A sales executive sees only their own performance — a personal dashboard in
   // place of the group/branch overview.
-  if (view.role === 'sales_rep' && view.repId) {
-    return <SalesRepOverview repId={view.repId} />;
+  if (view.user_role === 'sales_rep' && view.rep_id) {
+    return <SalesRepOverview repId={view.rep_id} />;
   }
 
   return (
@@ -171,7 +172,7 @@ export default function OverviewPage() {
                     <KpiCard tone="primary" icon={<Car size={16} />} label="Cars Sold" value={<CountUp value={data.kpis.cars_delivered} format={intFmt} />} sub={`${data.kpis.total_leads} leads in scope`} delta={carsDelta} deltaLabel={trendLabel} />
                     <KpiCard tone="warning" icon={<Target size={16} />} label="Conversion Rate" value={<CountUp value={data.kpis.conversion} format={(n) => pct(n)} />} sub={`${data.kpis.won_leads} sold + ${data.kpis.committed_leads} ordered of ${data.kpis.total_leads} leads`} />
                     <KpiCard tone="primary" icon={<Tag size={16} />} label="Average Deal Value" value={<CountUp value={avgDeal} format={formatINR} />} sub="avg price per car sold" />
-                    <KpiCard alarm icon={<Snowflake size={16} />} label="Revenue at Risk" value={<CountUp value={data.kpis.cold_value} format={formatINR} />} sub={<>{data.kpis.cold_leads} leads slipping · 7+ days idle{data.kpis.awaiting_leads > 0 && (<><br /><span className="text-faint">plus {data.kpis.awaiting_leads} orders awaiting delivery</span></>)}</>} />
+                    <KpiCard alarm icon={<Snowflake size={16} />} label="Revenue at Risk" value={<CountUp value={data.kpis.cold_value} format={formatINR} />} sub={<>{data.kpis.cold_leads} leads not contacted in 7+ days — going cold{data.kpis.awaiting_leads > 0 && (<><br /><span className="text-faint">plus {data.kpis.awaiting_leads} orders placed, still waiting for delivery</span></>)}</>} />
                   </>
                 );
               })()}
@@ -191,23 +192,12 @@ export default function OverviewPage() {
                 {(() => {
                   const sb = scopedBranch;
                   if (!sb) return null;
-                  const pf = sb.pipeline_forecast;
                   const mult = sb.delivered ? Math.round(sb.target_units / sb.delivered) : 0;
                   const paceNote = mult >= 2 ? `roughly ${mult}× real pace` : 'well above real pace';
                   return (
-                    <>
-                      <p className="mt-3 rounded-sm bg-surface-2 px-3 py-2.5 text-sm text-muted">
-                        {sb.name} delivered <span className="font-semibold text-text">{sb.delivered} of {sb.target_units.toLocaleString('en-IN')} cars ({pct(sb.attainment)})</span> and <span className="font-semibold text-text">{formatINR(sb.revenue)} of {formatINR(sb.revenue_target)} ({pct(sb.revenue_attainment)})</span> — targets are stretch goals, {paceNote}.
-                      </p>
-                      <p className="mt-2 flex items-start gap-2 rounded-sm bg-primary-50 px-3 py-2.5 text-sm text-muted">
-                        <TrendingUp size={16} className="mt-0.5 shrink-0 text-primary-700" />
-                        <span>
-                          Once the deals they&rsquo;re working now play out, this branch should finish around{' '}
-                          <span className="font-semibold text-text">{pf.projected_total} cars</span> — with{' '}
-                          <span className="font-semibold text-success">{formatINR(pf.expected_additional_revenue)}</span> of revenue still to win.
-                        </span>
-                      </p>
-                    </>
+                    <p className="mt-3 rounded-sm bg-surface-2 px-3 py-2.5 text-sm text-muted">
+                      {sb.name} delivered <span className="font-semibold text-text">{sb.delivered} of {sb.target_units.toLocaleString('en-IN')} cars ({pct(sb.attainment)})</span> and <span className="font-semibold text-text">{formatINR(sb.revenue)} of {formatINR(sb.revenue_target)} ({pct(sb.revenue_attainment)})</span> — targets are stretch goals, {paceNote}.
+                    </p>
                   );
                 })()}
               </div>
@@ -221,7 +211,6 @@ export default function OverviewPage() {
                 <div className={cn('grid items-center px-1 pb-2 text-xs text-faint', BRANCH_COLS)}>
                   <span className="col-span-2">Branch</span>
                   <SortHeader label="Delivered" active={branchSort?.key === 'delivered'} dir={branchSort?.dir} onClick={() => toggleBranchSort('delivered')} />
-                  <SortHeader label="Target" className="hidden lg:flex" active={branchSort?.key === 'target_units'} dir={branchSort?.dir} onClick={() => toggleBranchSort('target_units')} />
                   <SortHeader label="Cold" className="hidden md:flex" active={branchSort?.key === 'cold_leads'} dir={branchSort?.dir} onClick={() => toggleBranchSort('cold_leads')} />
                   <SortHeader label="Revenue" active={branchSort?.key === 'revenue'} dir={branchSort?.dir} onClick={() => toggleBranchSort('revenue')} />
                   <span />
@@ -239,6 +228,9 @@ export default function OverviewPage() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="min-w-0 truncate text-sm font-semibold">{b.name}</span>
+                        {/* Each branch's own % (delivered ÷ its target) — the number
+                            behind the tier label, shown so nothing is hidden. */}
+                        <span className="shrink-0 font-mono text-2xs font-semibold text-muted">{pct(b.attainment, 1)}</span>
                         <span className={cn('shrink-0 rounded-pill px-1.5 py-0.5 text-3xs font-bold uppercase tracking-wide', STATUS_PILL[b.status])}>
                           {STATUS_LABEL[b.status]}
                         </span>
@@ -254,13 +246,18 @@ export default function OverviewPage() {
                             <span className="truncate">{b.manager}</span>
                           </span>
                         )}
+                        {/* Target lives here as a sub-line (icon + number), not a
+                            column — keeps the name from truncating. */}
+                        <span className="flex items-center gap-1">
+                          <Target size={12} className="shrink-0" />
+                          <span>{b.target_units.toLocaleString('en-IN')}</span>
+                        </span>
                       </div>
                     </div>
                     <span className="flex items-center justify-end gap-1 font-mono text-sm">
                       {b.delivered}
                       <TrendArrow f={b.forecast} />
                     </span>
-                    <span className="hidden text-right font-mono text-sm text-muted lg:block">{b.target_units}</span>
                     <span className={cn('hidden text-right font-mono text-sm md:block', b.cold_leads > 0 ? 'text-warning' : 'text-faint')}>{b.cold_leads}</span>
                     <span className="text-right font-mono text-sm font-semibold">{formatINR(b.revenue)}</span>
                     {/* Drill-in cue: hidden at rest, fades in primary + nudge only on row hover. */}
@@ -278,25 +275,20 @@ export default function OverviewPage() {
                 </p>
                 {(() => {
                   const gt = data.group_target;
-                  const f = data.forecast;
                   // Targets run far above real pace; show by how much (≈9× all-time),
-                  // adapting to the selected window. The table header + attention
-                  // panel already say "ranked vs pace" and name the lagging branch,
-                  // so we don't repeat that here.
+                  // adapting to the selected window. The pipeline projection now
+                  // lives in "Needs your attention" as an action, not here.
                   const mult = gt.delivered ? Math.round(gt.target_units / gt.delivered) : 0;
                   const paceNote = mult >= 2 ? `roughly ${mult}× real pace` : 'well above real pace';
                   return (
                     <>
                       <p className="mt-3 rounded-sm bg-surface-2 px-3 py-2.5 text-sm text-muted">
-                        Delivered <span className="font-semibold text-text">{gt.delivered} of {gt.target_units.toLocaleString('en-IN')} cars ({pct(gt.attainment)})</span> and <span className="font-semibold text-text">{formatINR(gt.revenue)} of {formatINR(gt.revenue_target)} ({pct(gt.revenue_attainment)})</span> — targets are stretch goals, {paceNote}.
+                        Group pace: <span className="font-semibold text-text">{gt.delivered} of {gt.target_units.toLocaleString('en-IN')} target cars = {pct(gt.attainment, 1)}</span>, and <span className="font-semibold text-text">{formatINR(gt.revenue)} of {formatINR(gt.revenue_target)} ({pct(gt.revenue_attainment, 1)})</span> — targets are stretch goals, {paceNote}.
                       </p>
-                      <p className="mt-2 flex items-start gap-2 rounded-sm bg-primary-50 px-3 py-2.5 text-sm text-muted">
-                        <TrendingUp size={16} className="mt-0.5 shrink-0 text-primary-700" />
-                        <span>
-                          Once the deals we&rsquo;re working now play out, we should finish around{' '}
-                          <span className="font-semibold text-text">{f.projected_total} cars</span> — with{' '}
-                          <span className="font-semibold text-success">{formatINR(f.expected_additional_revenue)}</span> of revenue still to win.
-                        </span>
+                      {/* How the tier labels are judged, in plain % (thresholds are
+                          1.15× / 0.6× the group pace, shown as numbers). */}
+                      <p className="mt-2 px-1 text-2xs text-faint">
+                        Tiers vs the {pct(gt.attainment, 1)} group pace — <span className="font-semibold text-success">Ahead of group</span> above {pct(gt.attainment * 1.15, 1)} · <span className="font-semibold text-primary-700">Mid-pack</span> {pct(gt.attainment * 0.6, 1)}–{pct(gt.attainment * 1.15, 1)} · <span className="font-semibold text-danger">Lagging</span> below {pct(gt.attainment * 0.6, 1)}.
                       </p>
                     </>
                   );
@@ -327,6 +319,9 @@ export default function OverviewPage() {
                       {leak && (
                         <Attention tone="primary" icon={<TrendingDown size={17} />} title={`Most leads fall off between ${leak.from} and ${leak.to}`} body={`${Math.round(leak.drop * 100)}% drop out at this step — the biggest leak.`} href="/insights" delay={110} />
                       )}
+                      {scopedBranch && (
+                        <Attention tone="success" icon={<TrendingUp size={17} />} title={`${formatINR(scopedBranch.pipeline_forecast.expected_additional_revenue)} still to win`} body={`Close the deals in the pipeline now to finish around ${scopedBranch.pipeline_forecast.projected_total} cars.`} href="/bottlenecks" delay={165} />
+                      )}
                     </>
                   );
                 })()}
@@ -350,12 +345,16 @@ export default function OverviewPage() {
               <div className="flex flex-col gap-2.5">
                 {(() => {
                   const worst = [...data.branch_health].sort((a, b) => a.attainment - b.attainment)[0];
-                  const leak = biggestLeak(data.funnel);
+                  const pace = data.group_target.attainment;
+                  const total = data.funnel[0]?.count ?? 0;
+                  const contacted = data.funnel[1]?.count ?? 0;
+                  const never = total - contacted;
                   return (
                     <>
-                      <Attention tone="danger" icon={<AlertTriangle size={17} />} title={`${worst.name} is behind`} body={`Only ${worst.delivered} of ${worst.target_units} delivered (${pct(worst.attainment)} of target).`} href={`/branches/${worst.id}`} delay={0} />
-                      <Attention tone="warning" icon={<Clock size={17} />} title={`${data.kpis.cold_leads} leads going cold`} body={`Worth ${formatINR(data.kpis.cold_value)} in pipeline, untouched 7+ days.`} href="/bottlenecks" delay={55} />
-                      {leak && <Attention tone="primary" icon={<TrendingDown size={17} />} title={`Most leads fall off between ${leak.from} and ${leak.to}`} body={`${Math.round(leak.drop * 100)}% drop out at this step — the funnel's single biggest leak.`} href="/insights" delay={110} />}
+                      <Attention tone="danger" icon={<AlertTriangle size={17} />} title={`${worst.name} is lagging`} body={`Only ${worst.delivered} of ${worst.target_units} cars delivered (${pct(worst.attainment, 1)}), far below the ${pct(pace, 1)} group pace.`} href={`/branches/${worst.id}`} delay={0} />
+                      <Attention tone="warning" icon={<Clock size={17} />} title={`${data.kpis.cold_leads} leads going cold`} body={`We haven't contacted them in 7+ days. Worth ${formatINR(data.kpis.cold_value)}.`} href="/bottlenecks" delay={55} />
+                      {never > 0 && <Attention tone="primary" icon={<TrendingDown size={17} />} title={`${never} leads never called`} body={`${total} came in, but only ${contacted} were ever contacted — ${never} (${pct(never / total)}) never called. Our biggest leak.`} href="/insights" delay={110} />}
+                      <Attention tone="success" icon={<TrendingUp size={17} />} title={`${formatINR(data.forecast.expected_additional_revenue)} still to win`} body={`Close the deals in the pipeline now and we finish around ${data.forecast.projected_total} cars.`} href="/bottlenecks" delay={165} />
                     </>
                   );
                 })()}
@@ -372,11 +371,29 @@ export default function OverviewPage() {
             ) : (
               <Funnel
                 steps={data.funnel}
-                note={
-                  data.funnel.length > 1
-                    ? `${data.funnel[0].count - data.funnel[1].count} leads dropped before reaching the contacted stage — the single biggest leak in the funnel and the clearest place to recover deals.`
-                    : undefined
-                }
+                note={(() => {
+                  const total = data.funnel[0]?.count ?? 0;
+                  const contacted = data.funnel[1]?.count ?? 0;
+                  const never = total - contacted;
+                  const riv = data.lost_to_rivals;
+                  const top = riv?.reasons?.[0];
+                  if (never <= 0 && !(riv && riv.count > 0)) return undefined;
+                  return (
+                    <>
+                      {never > 0 && (
+                        <span className="block">
+                          {never} leads ({pct(never / total)}) were never contacted — the drop happens before the funnel even starts.
+                        </span>
+                      )}
+                      {riv && riv.count > 0 && (
+                        <span className="mt-1.5 block">
+                          {riv.count} deals lost to competitors ({formatINR(riv.value)})
+                          {top ? <> — of these, {top.count} chose a “{top.reason.toLowerCase()}” ({formatINR(top.value)})</> : null}.
+                        </span>
+                      )}
+                    </>
+                  );
+                })()}
               />
             )}
           </Card>
@@ -415,12 +432,13 @@ export default function OverviewPage() {
                   <span className="font-mono text-3xl font-semibold leading-none text-warning">
                     {Math.round(data.speed_to_lead.median_hours)}
                   </span>
-                  <span className="text-sm font-semibold text-muted">hrs median</span>
+                  <span className="text-sm font-semibold text-muted">hours to first call</span>
                 </div>
-                <p className="mt-3 text-xs text-muted">
-                  Only {pct(data.speed_to_lead.within_24h)} of new leads are reached within a day, and{' '}
-                  {pct(data.speed_to_lead.over_72h)} wait more than three — a response-time gap worth
-                  tightening for customer experience.
+                <p className="mt-3 text-sm text-text">
+                  On average we take {Math.round(data.speed_to_lead.median_hours)} hours to make the first call to a new lead.
+                </p>
+                <p className="mt-1.5 text-xs text-muted">
+                  Only {pct(data.speed_to_lead.within_24h)} of new leads are called within a day; {pct(data.speed_to_lead.over_72h)} wait more than 3 days.
                 </p>
               </div>
             )}
@@ -450,9 +468,9 @@ export default function OverviewPage() {
                       <div className="bg-danger" style={{ width: w(atRisk) }} />
                     </div>
                     <div className="mt-3 flex flex-col gap-1.5 text-2xs">
-                      <LegendRow color="bg-primary-500" label="Committed" note="ordered, awaiting delivery" value={`${formatINR(committed)} · ${data.kpis.committed_leads}`} />
-                      <LegendRow color="bg-success" label="Healthy" note="active pipeline" value={`${formatINR(healthy)} · ${healthyLeads}`} />
-                      <LegendRow color="bg-danger" label="At risk" note="7+ days idle" value={`${formatINR(atRisk)} · ${data.kpis.cold_leads}`} />
+                      <LegendRow color="bg-primary-500" label="Committed" note="ordered, awaiting delivery" money={formatINR(committed)} count={data.kpis.committed_leads} />
+                      <LegendRow color="bg-success" label="Healthy" note="active pipeline" money={formatINR(healthy)} count={healthyLeads} />
+                      <LegendRow color="bg-danger" label="At risk" note="7+ days idle" money={formatINR(atRisk)} count={data.kpis.cold_leads} />
                     </div>
                   </div>
                 );
@@ -566,14 +584,20 @@ function SortHeader({
 }
 
 // One row of the pipeline-quality legend: colour swatch, label, muted note,
-// then the value + lead count aligned right.
-function LegendRow({ color, label, note, value }: { color: string; label: string; note: string; value: string }) {
+// then the money + a person icon with the deal count aligned right (the icon
+// makes clear the number counts deals, not more money).
+function LegendRow({ color, label, note, money, count }: { color: string; label: string; note: string; money: string; count: number }) {
   return (
     <div className="flex items-center gap-2">
       <span className={cn('h-2.5 w-2.5 shrink-0 rounded-pill', color)} />
       <span className="font-semibold">{label}</span>
       <span className="truncate text-faint">{note}</span>
-      <span className="ml-auto shrink-0 font-mono font-semibold tabular-nums">{value}</span>
+      <span className="ml-auto flex shrink-0 items-center gap-1 font-mono font-semibold tabular-nums">
+        {money}
+        <span className="text-faint">·</span>
+        <Users size={12} className="text-faint" aria-hidden />
+        {count}
+      </span>
     </div>
   );
 }
@@ -603,14 +627,14 @@ function Attention({
     <Link
       href={href}
       style={{ animationDelay: `${delay}ms` }}
-      className="dp-rise grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-sm border border-border bg-surface p-3 transition-colors duration-fast hover:bg-surface-2"
+      className="dp-rise grid grid-cols-[auto_1fr_auto] items-start gap-3 rounded-sm border border-border bg-surface p-3 transition-colors duration-fast hover:bg-surface-2"
     >
-      <span className={cn('inline-flex h-9 w-9 items-center justify-center rounded-sm', bg)}>{icon}</span>
+      <span className={cn('inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-sm', bg)}>{icon}</span>
       <div>
         <div className="text-sm font-semibold">{title}</div>
-        <p className="mt-0.5 text-xs text-muted">{body}</p>
+        <p className="mt-0.5 text-xs text-muted">{emphasize(body)}</p>
       </div>
-      <ArrowRight size={15} className="text-faint" />
+      <ArrowRight size={15} className="mt-1 text-faint" />
     </Link>
   );
 }

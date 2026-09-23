@@ -2,11 +2,11 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowUpRight, Building2, Car, Gauge, IndianRupee, MapPin, Target, User, Users } from 'lucide-react';
+import { ArrowUpRight, Building2, Car, Gauge, IndianRupee, Layers, MapPin, Target, User, Users } from 'lucide-react';
 import { useApi } from '@/lib/useApi';
 import { useRange } from '@/lib/useFilters';
 import { useRequireAdmin } from '@/lib/view';
-import { formatINR, pct } from '@/lib/format';
+import { formatINR, frac, pct } from '@/lib/format';
 import { SOURCE_LABELS } from '@/types';
 import type { BranchDetail, BranchHealth, Bottleneck, RepRow } from '@/types';
 import { PageHeader } from '@/components/PageHeader';
@@ -16,11 +16,13 @@ import { KpiCard } from '@/components/KpiCard';
 import { CountUp } from '@/components/CountUp';
 import { Card } from '@/components/ui/Card';
 import { Funnel } from '@/components/Funnel';
+import { TrendChart } from '@/components/charts/TrendChart';
 import { RankedBars } from '@/components/RankedBars';
 import { DataTable } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
 import { Dropdown } from '@/components/ui/Dropdown';
 import { bottleneckColumns } from '@/components/leadColumns';
+import { LeadTimeline } from '@/components/LeadTimeline';
 import { CardSkeleton, Skeleton } from '@/components/ui/Skeleton';
 import { ErrorState } from '@/components/ui/EmptyState';
 
@@ -34,8 +36,6 @@ export default function BranchPage({ params }: { params: { id: string } }) {
   const { data, error, loading } = useApi<BranchDetail>(appendRange(`/branches/${id}`, range));
   const { data: branches } = useApi<BranchHealth[]>('/branches');
 
-  const contactStep = data?.funnel.find((f) => f.stage === 'contacted');
-  const leak = contactStep?.drop ?? null;
   if (!ok) return null; // non-admin roles are redirected to Overview
 
   return (
@@ -81,9 +81,9 @@ export default function BranchPage({ params }: { params: { id: string } }) {
       <div className="p-lg flex flex-col gap-lg">
         {error && <ErrorState error={error} />}
 
-        <div className="grid grid-cols-2 gap-md md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-md md:grid-cols-3 lg:grid-cols-5">
           {loading || !data ? (
-            Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} />)
+            Array.from({ length: 5 }).map((_, i) => <CardSkeleton key={i} />)
           ) : (
             <>
               <KpiCard
@@ -94,8 +94,9 @@ export default function BranchPage({ params }: { params: { id: string } }) {
                 value={<CountUp value={data.kpis.cars_delivered} format={intFmt} />}
                 sub={`${data.kpis.total_leads} leads`}
               />
-              <KpiCard tone="warning" icon={<Target size={16} />} label="Conversion" value={<CountUp value={data.kpis.conversion} format={(n) => pct(n)} />} sub={`group ${pct(data.group_conversion)}`} />
-              <KpiCard tone="warning" icon={<Gauge size={16} />} label="Attainment" value={<CountUp value={data.kpis.attainment ?? 0} format={(n) => pct(n)} />} sub={`target ${data.kpis.target_units}`} />
+              <KpiCard tone="primary" icon={<Layers size={16} />} label="Open deals" value={<CountUp value={data.kpis.open_leads} format={intFmt} />} sub="in the pipeline now" />
+              <KpiCard tone="warning" icon={<Target size={16} />} label="Conversion" value={<CountUp value={data.kpis.conversion} format={(n) => pct(n)} />} sub={`${data.kpis.won_leads + data.kpis.committed_leads} of ${data.kpis.total_leads} became a sale · group ${pct(data.group_conversion)}`} />
+              <KpiCard tone="warning" icon={<Gauge size={16} />} label="Target progress" value={<CountUp value={data.kpis.attainment ?? 0} format={(n) => pct(n)} />} sub={`${data.kpis.cars_delivered} of ${data.kpis.target_units} · stretch target`} />
               <KpiCard tone="success" icon={<IndianRupee size={16} />} label="Revenue" value={<CountUp value={data.kpis.revenue_booked} format={formatINR} />} sub={`${pct(data.kpis.revenue_attainment ?? 0)} of ${formatINR(data.kpis.revenue_target ?? 0)} target`} />
             </>
           )}
@@ -107,42 +108,38 @@ export default function BranchPage({ params }: { params: { id: string } }) {
           {loading || !data ? (
             <Skeleton className="h-28 w-full" />
           ) : (
-            <PipelineForecast f={data.pipeline_forecast} runRate={data.forecast} />
+            <PipelineForecast f={data.pipeline_forecast} />
           )}
         </Card>
 
-        {/* Then the deals to act on today, full-width so the table has room. */}
-        <Card title="Stuck deals — act today" hint={data ? `${data.cold_categories.follow_up.count} to follow up · ${data.cold_categories.delivery.count} deliveries · ${data.cold_categories.stale.count} likely dead` : ''}>
+        {/* Then the deals to act on today, full-width so the table has room. The
+            exact same Bottlenecks table (expandable rows + full journey), so
+            there's one component, not a lesser copy. */}
+        <Card title="Stuck deals — act today" hint={data ? `${data.cold_categories.follow_up.count} active · ${data.cold_categories.delivery.count} deliveries · ${data.cold_categories.stale.count} likely dead` : ''}>
           {loading || !data ? (
             <Skeleton className="h-40 w-full" />
           ) : (
-            <DataTable<Bottleneck>
-              rows={data.cold_leads}
-              getKey={(r) => r.id}
-              empty="No cold leads — nice."
-              columns={bottleneckColumns({ showRep: true })}
-            />
+            <>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-xs text-muted">Open deals in this branch, quiet 7+ days.</p>
+                <Link href={`/bottlenecks?branch=${id}`} className="whitespace-nowrap text-xs font-semibold text-primary hover:underline">
+                  View all in Bottlenecks →
+                </Link>
+              </div>
+              <DataTable<Bottleneck>
+                rows={data.cold_leads}
+                getKey={(r) => r.id}
+                empty="No cold leads — nice."
+                columns={bottleneckColumns({ showRep: true })}
+                expandable={(r) => <LeadTimeline lead={r} />}
+              />
+            </>
           )}
         </Card>
 
-        {/* Where leads leak + how each rep is performing, side by side. */}
-        <div className="grid gap-md lg:grid-cols-[1fr_1.6fr]">
-          <Card title="Where this branch loses leads" hint={data ? `${data.kpis.total_leads} leads` : ''}>
-            {loading || !data ? (
-              <Skeleton className="h-56 w-full" />
-            ) : (
-              <Funnel
-                steps={data.funnel}
-                note={
-                  leak != null && leak > 0.3
-                    ? `${Math.round(leak * 100)}% of leads are never contacted — a follow-up problem, not a demand problem.`
-                    : undefined
-                }
-              />
-            )}
-          </Card>
-
-          <Card title="Branch Representatives" hint={data ? `${data.reps.length} reps` : ''}>
+        {/* Branch reps — a full-width list; a CEO already knows reps carry no
+            per-rep target, so "of N" needs no footnote. */}
+        <Card title="Branch Representatives" hint={data ? `${data.reps.length} reps` : ''}>
             {loading || !data ? (
               <Skeleton className="h-56 w-full" />
             ) : (
@@ -154,21 +151,21 @@ export default function BranchPage({ params }: { params: { id: string } }) {
                   {
                     key: 'name',
                     header: 'Rep',
+                    // The % reads as a plain fraction that carries what it's a share
+                    // of: "Sold" counts became-a-sale (delivered + ordered) — one
+                    // rule app-wide — over leads assigned (NOT a target). This panel
+                    // is narrow, so the two fractions stack under the name.
                     render: (r) => (
                       <div>
                         <div className="flex items-center gap-2">
                           <Link href={`/reps/${r.id}`} className="font-semibold hover:text-primary">
                             {r.name}
                           </Link>
-                          <Badge tone={r.conversion < 0.1 ? 'danger' : r.conversion < 0.2 ? 'warning' : 'success'} mono>
-                            {pct(r.conversion)}
-                          </Badge>
                           {r.needs_coaching && <Badge tone="warning">Coach</Badge>}
                         </div>
-                        {/* Follow-up discipline lives with the person, not as its own column. */}
-                        <div className="mt-0.5 text-xs text-faint">
-                          Contacted{' '}
-                          <span className={`font-mono ${r.contact_rate < 0.65 ? 'text-danger' : 'text-muted'}`}>{pct(r.contact_rate)}</span>
+                        <div className="mt-0.5 flex flex-col gap-0.5 text-xs">
+                          <span className={`font-mono ${r.conversion < 0.2 ? 'text-danger' : 'text-muted'}`}>{frac(r.sold, r.leads, 'Sold')}</span>
+                          <span className={`font-mono ${r.contact_rate < 0.65 ? 'text-danger' : 'text-faint'}`}>{frac(r.contacted, r.leads, 'Contacted')}</span>
                         </div>
                       </div>
                     ),
@@ -222,6 +219,49 @@ export default function BranchPage({ params }: { params: { id: string } }) {
               />
             )}
           </Card>
+
+        {/* Where leads leak, and the branch's monthly output trend, side by side. */}
+        <div className="grid gap-md lg:grid-cols-2">
+          <Card title="Where this branch loses leads" hint={data ? `${data.kpis.total_leads} leads` : ''}>
+            {loading || !data ? (
+              <Skeleton className="h-56 w-full" />
+            ) : (
+              <Funnel
+                steps={data.funnel}
+                note={(() => {
+                  const total = data.funnel[0]?.count ?? 0;
+                  const contacted = data.funnel[1]?.count ?? 0;
+                  const never = total - contacted;
+                  return never > 0
+                    ? `${never} of ${total} leads (${pct(never / total)}) were never contacted — a follow-up problem, not a demand problem.`
+                    : undefined;
+                })()}
+              />
+            )}
+          </Card>
+
+          <Card title="Deliveries & revenue" hint="per month">
+            {loading || !data ? (
+              <Skeleton className="h-full min-h-[200px] w-full" />
+            ) : (
+              <TrendChart
+                data={data.monthly}
+                note={(() => {
+                  const ms = data.monthly;
+                  if (ms.length < 2) return undefined;
+                  const monthName = (ym: string) => {
+                    const [y, m] = ym.split('-').map(Number);
+                    return new Date(y, m - 1, 1).toLocaleString('en-US', { month: 'long' });
+                  };
+                  const topDel = [...ms].sort((a, b) => b.delivered - a.delivered)[0];
+                  const topRev = [...ms].sort((a, b) => b.revenue - a.revenue)[0];
+                  return topDel.month === topRev.month
+                    ? `${monthName(topDel.month)} was this branch's strongest month — ${topDel.delivered} cars and ${formatINR(topRev.revenue)} booked.`
+                    : `${monthName(topDel.month)} delivered the most cars (${topDel.delivered}); ${monthName(topRev.month)} booked the most revenue (${formatINR(topRev.revenue)}).`;
+                })()}
+              />
+            )}
+          </Card>
         </div>
 
         {/* Demand: what sells and where leads come from. */}
@@ -239,6 +279,13 @@ export default function BranchPage({ params }: { params: { id: string } }) {
                   .sort((a, b) => b.delivered - a.delivered)
                   .slice(0, 6)
                   .map((m) => ({ label: m.model, value: m.delivered }))}
+                note={(() => {
+                  const ms = [...data.model_mix].sort((a, b) => b.delivered - a.delivered);
+                  const totalDel = ms.reduce((a, m) => a + m.delivered, 0);
+                  if (!totalDel) return undefined;
+                  const top3 = ms.slice(0, 3).reduce((a, m) => a + m.delivered, 0);
+                  return `${ms[0].model} is the top seller here with ${ms[0].delivered} cars. The top three make up ${Math.round((top3 / totalDel) * 100)}% of deliveries.`;
+                })()}
               />
             )}
           </Card>
@@ -255,6 +302,16 @@ export default function BranchPage({ params }: { params: { id: string } }) {
                 items={[...data.source_quality]
                   .sort((a, b) => b.leads - a.leads)
                   .map((s) => ({ label: SOURCE_LABELS[s.source] ?? s.source, value: s.leads }))}
+                note={(() => {
+                  const ss = data.source_quality;
+                  if (!ss.length) return undefined;
+                  const topVol = [...ss].sort((a, b) => b.leads - a.leads)[0];
+                  const bestConv = [...ss].sort((a, b) => b.rate - a.rate)[0];
+                  const lbl = (x: typeof topVol) => SOURCE_LABELS[x.source] ?? x.source;
+                  return topVol.source === bestConv.source
+                    ? `${lbl(topVol)} brings the most leads (${topVol.leads}) and converts best (${pct(bestConv.rate)}).`
+                    : `${lbl(topVol)} brings the most leads (${topVol.leads}); ${lbl(bestConv)} converts best (${pct(bestConv.rate)}).`;
+                })()}
               />
             )}
           </Card>

@@ -6,8 +6,9 @@ from typing import Optional
 
 from . import metrics, bottlenecks, deliveries, insights, forecast
 from .loader import (
-    BRANCHES, TARGETS, OPEN_STATUSES, REP_BY_ID, LEAD_BY_ID,
+    BRANCHES, TARGETS, OPEN_STATUSES, REP_BY_ID, LEAD_BY_ID, DELIVERY_BY_LEAD,
     branch_name, branch_manager, scope_leads, scope_deliveries, idle_days,
+    stages_reached,
 )
 
 
@@ -220,13 +221,17 @@ def _coaching(contact_rate: float, response_hours: float, leads: int) -> bool:
 
 def branch_reps(bid: str, dfrom=None, dto=None) -> list:
     leads = scope_leads(bid, dfrom, dto)
-    agg = defaultdict(lambda: {"delivered": 0, "revenue": 0, "active": 0, "cold": 0, "cold_value": 0, "leads": []})
+    agg = defaultdict(lambda: {"delivered": 0, "ordered": 0, "contacted": 0, "revenue": 0, "active": 0, "cold": 0, "cold_value": 0, "leads": []})
     for l in leads:
         a = agg[l["assigned_to"]]
         a["leads"].append(l)
         if l["status"] == "delivered":
             a["delivered"] += 1
             a["revenue"] += l.get("deal_value", 0)
+        elif l["status"] == "order_placed":
+            a["ordered"] += 1
+        if "contacted" in stages_reached(l):
+            a["contacted"] += 1
         # Open deals the rep is currently working; "cold" = those idle 7+ days
         # (the leads that actually need a nudge), and cold_value is the revenue
         # tied up in them. No per-rep target exists in the data, so we surface
@@ -240,12 +245,17 @@ def branch_reps(bid: str, dfrom=None, dto=None) -> list:
     for rid, a in agg.items():
         rep = REP_BY_ID.get(rid, {})
         n = len(a["leads"])
+        # A "sale" = delivered + ordered (an order is a won deal, just awaiting
+        # handover) — the SAME definition used group- and branch-wide, so a rep's
+        # % lines up with every other page.
+        sold = a["delivered"] + a["ordered"]
         cr = metrics.contact_rate(a["leads"])
         resp = metrics.speed_to_lead(a["leads"])["median_hours"]
         rows.append({
             "id": rid, "name": rep.get("name", rid), "role": rep.get("role", ""),
-            "leads": n, "delivered": a["delivered"],
-            "conversion": round(a["delivered"] / n, 4) if n else 0,
+            "leads": n, "delivered": a["delivered"], "ordered": a["ordered"],
+            "sold": sold, "contacted": a["contacted"],
+            "conversion": round(sold / n, 4) if n else 0,
             "revenue": a["revenue"],
             "active": a["active"], "cold": a["cold"], "cold_value": a["cold_value"],
             "contact_rate": cr, "avg_response_hours": resp,
@@ -279,6 +289,10 @@ def branch_detail(bid: str, dfrom=None, dto=None) -> Optional[dict]:
             target,
         ),
         "funnel": metrics.funnel(leads, group_by="rep"),
+        # Monthly cars-delivered + revenue for this branch — the branch-level
+        # counterpart to the Overview trend, reusing the same chart. Split by rep
+        # (right for a single branch) for the hover breakdown.
+        "monthly": metrics.monthly_deliveries(dels, by="rep"),
         "model_mix": deliveries.model_mix(bid, dfrom, dto),
         "source_quality": insights.source_quality(leads),
         "reps": branch_reps(bid, dfrom, dto),
@@ -290,32 +304,40 @@ def branch_detail(bid: str, dfrom=None, dto=None) -> Optional[dict]:
 
 def rep_leaderboard(branch=None, dfrom=None, dto=None) -> list:
     leads = scope_leads(branch, dfrom, dto)
-    agg = defaultdict(lambda: {"delivered": 0, "revenue": 0, "open": 0, "cold": 0, "leads": []})
+    agg = defaultdict(lambda: {"delivered": 0, "ordered": 0, "contacted": 0, "revenue": 0, "open": 0, "cold": 0, "cold_value": 0, "leads": []})
     for l in leads:
         a = agg[l["assigned_to"]]
         a["leads"].append(l)
         if l["status"] == "delivered":
             a["delivered"] += 1
             a["revenue"] += l.get("deal_value", 0)
+        elif l["status"] == "order_placed":
+            a["ordered"] += 1
+        if "contacted" in stages_reached(l):
+            a["contacted"] += 1
         if l["status"] in OPEN_STATUSES:
             a["open"] += 1
             if idle_days(l) >= 7:
                 a["cold"] += 1
+                a["cold_value"] += l.get("deal_value", 0)
     rows = []
     for rid, a in agg.items():
         rep = REP_BY_ID.get(rid, {})
         n = len(a["leads"])
+        # Conversion counts became-a-sale (delivered + ordered) — one definition
+        # across the whole app. Delivered stays its own column (cars handed over).
+        sold = a["delivered"] + a["ordered"]
         cr = metrics.contact_rate(a["leads"])
         resp = metrics.speed_to_lead(a["leads"])["median_hours"]
         rows.append({
             "id": rid, "name": rep.get("name", rid),
             "branch": branch_name(rep.get("branch_id", "")),
             "role": rep.get("role", ""),
-            "leads": n, "delivered": a["delivered"],
-            "conversion": round(a["delivered"] / n, 4) if n else 0,
+            "leads": n, "delivered": a["delivered"], "contacted": a["contacted"],
+            "conversion": round(sold / n, 4) if n else 0,
             "revenue": a["revenue"],
             "avg_deal": round(a["revenue"] / a["delivered"]) if a["delivered"] else 0,
-            "active_deals": a["open"], "cold": a["cold"],
+            "active_deals": a["open"], "cold": a["cold"], "cold_value": a["cold_value"],
             "contact_rate": cr, "avg_response_hours": resp,
             "needs_coaching": _coaching(cr, resp, n),
             "overloaded": a["open"] > 15,
@@ -330,8 +352,12 @@ def rep_detail(rid: str, dfrom=None, dto=None) -> Optional[dict]:
         return None
     leads = [l for l in scope_leads(rep["branch_id"], dfrom, dto) if l["assigned_to"] == rid]
     delivered = [l for l in leads if l["status"] == "delivered"]
+    ordered = [l for l in leads if l["status"] == "order_placed"]
     open_leads = [l for l in leads if l["status"] in OPEN_STATUSES]
     total = len(leads)
+    # A sale = delivered + ordered — the same definition as every other page, so
+    # the rep's card lines up with the branch's 46%.
+    sold = len(delivered) + len(ordered)
     sp = metrics.speed_to_lead(leads)
 
     branch_leads = scope_leads(rep["branch_id"], dfrom, dto)
@@ -346,14 +372,35 @@ def rep_detail(rid: str, dfrom=None, dto=None) -> Optional[dict]:
         "kpis": {
             "leads": total,
             "delivered": len(delivered),
-            "conversion": round(len(delivered) / total, 4) if total else 0,
+            "sold": sold,
+            "conversion": round(sold / total, 4) if total else 0,
             "revenue": sum(l.get("deal_value", 0) for l in delivered),
             "open_deals": len(open_leads),
             "avg_response_hours": sp["median_hours"],
             "contact_rate": cr,
         },
         "funnel": metrics.funnel(leads),
+        "monthly": _rep_monthly(leads),
         "pipeline": pipeline,
         "branch_conversion": metrics.conversion(branch_leads),
         "group_conversion": metrics.conversion(scope_leads(None, dfrom, dto)),
     }
+
+
+def _rep_monthly(leads: list) -> list:
+    """Per-month contacted-vs-sold for a rep's own leads, oldest first.
+
+    `contacted` counts leads whose first-contact happened that month; `sold`
+    counts cars delivered that month (by delivery date). Powers the rep's
+    monthly performance chart, which reuses the Overview trend chart.
+    """
+    stats = defaultdict(lambda: {"contacted": 0, "sold": 0})
+    for l in leads:
+        ts = next((h["timestamp"] for h in l["status_history"] if h["status"] == "contacted"), None)
+        if ts:
+            stats[ts[:7]]["contacted"] += 1
+        if l["status"] == "delivered":
+            d = DELIVERY_BY_LEAD.get(l["id"])
+            if d:
+                stats[d["delivery_date"][:7]]["sold"] += 1
+    return [{"month": m, "contacted": stats[m]["contacted"], "sold": stats[m]["sold"]} for m in sorted(stats)]

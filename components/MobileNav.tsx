@@ -41,7 +41,7 @@ export function MobileNav() {
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         <div className="mx-auto flex max-w-2xl items-stretch">
-          {navForRole(view.role).map((n) => {
+          {navForRole(view.user_role).map((n) => {
             const active = isActive(n);
             const Icon = n.icon;
             return (

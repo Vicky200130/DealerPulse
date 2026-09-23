@@ -11,8 +11,11 @@ import type { BranchHealth } from '@/types';
 // forces the scope), so it hides itself for those roles.
 export function BranchFilter({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const { view } = useView();
-  const { data } = useApi<BranchHealth[]>('/branches');
-  if (view.role !== 'admin') return null;
+  // Only the CEO sees (and can call) the cross-branch list — fetch only then, so
+  // a manager/rep never fires an admin-only request that 403s and renders nothing.
+  const isAdmin = view.user_role === 'admin';
+  const { data } = useApi<BranchHealth[]>(isAdmin ? '/branches' : '');
+  if (!isAdmin) return null;
   const options = [
     { label: 'All branches', value: '' },
     ...(data ?? []).map((b) => ({ label: b.name, value: b.id })),

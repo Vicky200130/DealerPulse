@@ -67,8 +67,8 @@ export function useBranch(): [string, (b: string) => void] {
   // A branch manager (or a rep) is locked to their own branch: the filter is
   // forced and its setter is a no-op. The BranchFilter control hides itself for
   // these roles, so this is just the data-scoping half of that lock.
-  if (view.role !== 'admin' && view.branchId) {
-    return [view.branchId, () => {}];
+  if (view.user_role !== 'admin' && view.branch_id) {
+    return [view.branch_id, () => {}];
   }
 
   return [sp.get('branch') ?? '', setBranch];

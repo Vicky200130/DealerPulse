@@ -25,12 +25,14 @@ import { downloadCSV } from '@/lib/csv';
 type Idle = '1' | '3' | '7' | '14';
 type CatFilter = 'all' | BottleneckCategory;
 
-// The three buckets, in the order they should be worked: recoverable sales
-// follow-ups, then delivery chases, then deals to close out.
-const CATS: { key: BottleneckCategory; label: string; blurb: string; cls: string; active: string }[] = [
-  { key: 'follow_up', label: 'Follow-ups', blurb: 'pre-order, recoverable', cls: 'bg-primary-100 text-primary-700', active: 'ring-2 ring-primary-500' },
-  { key: 'delivery', label: 'Deliveries to chase', blurb: 'ordered, awaiting delivery', cls: 'bg-warning-soft text-warning', active: 'ring-2 ring-warning' },
-  { key: 'stale', label: 'Likely dead', blurb: '60+ days — close or revive', cls: 'bg-surface-2 text-muted', active: 'ring-2 ring-border' },
+// The three buckets, in the order they should be worked: live deals gone quiet,
+// then delivery chases, then deals to close out. Each blurb reads the selected
+// day filter so it always says the right number; "Likely dead" is fixed at 60+
+// days (a note explains why the day filter never moves it).
+const CATS: { key: BottleneckCategory; label: string; blurb: (n: string) => string; note?: string; cls: string; active: string }[] = [
+  { key: 'follow_up', label: 'Active deals', blurb: (n) => `open deals, not followed up in ${n}+ days`, cls: 'bg-primary-100 text-primary-700', active: 'ring-2 ring-primary-500' },
+  { key: 'delivery', label: 'Deliveries to chase', blurb: (n) => `ordered — no delivery update in ${n}+ days`, cls: 'bg-warning-soft text-warning', active: 'ring-2 ring-warning' },
+  { key: 'stale', label: 'Likely dead', blurb: () => 'silent 60+ days — close or revive', note: 'Always 60+ days — not affected by the day filter.', cls: 'bg-surface-2 text-muted', active: 'ring-2 ring-border' },
 ];
 
 export default function BottlenecksPage() {
@@ -42,7 +44,7 @@ export default function BottlenecksPage() {
   const [branch, setBranch] = useBranch();
   const [rep, setRep] = useRep();
   // A sales exec is locked to their own deals; a manager/CEO can pick a rep to focus.
-  const effRep = view.role === 'sales_rep' ? view.repId : rep;
+  const effRep = view.user_role === 'sales_rep' ? view.rep_id : rep;
   const repParam = effRep ? `&rep=${effRep}` : '';
   const { data, error, loading } = useApi<BottleneckResult>(appendBranch(appendRange(`/bottlenecks?idle=${idle}${repParam}`, range), branch));
 
@@ -108,9 +110,10 @@ export default function BottlenecksPage() {
                     <span className="font-mono text-lg font-semibold tabular-nums">{stat.count}</span>
                   </div>
                   <div className="mt-1.5 flex items-baseline justify-between gap-2">
-                    <span className="text-xs text-faint">{c.blurb}</span>
+                    <span className="text-xs text-faint">{c.blurb(idle)}</span>
                     <span className="font-mono text-xs font-semibold text-muted">{formatINR(stat.value)}</span>
                   </div>
+                  {c.note && <div className="mt-1 text-2xs text-faint">{c.note}</div>}
                 </button>
               );
             })}
@@ -147,6 +150,10 @@ export default function BottlenecksPage() {
             />
           </div>
         </div>
+
+        <p className="-mt-1 text-2xs text-faint">
+          Showing deals quiet for {idle}+ days — the point where a deal starts to slip. Under a week is usually still safe.
+        </p>
 
         <Card>
           {loading || !data ? (

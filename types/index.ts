@@ -178,9 +178,18 @@ export interface Overview {
   group_target: GroupTarget;
   forecast: PipelineForecast;
   lost_reasons: LostReason[];
+  lost_to_rivals: CompetitorLosses;
   model_mix: ModelRow[];
   source_quality: SourceQuality[];
   now: string;
+}
+
+// Customers lost to a rival (price/brand): how many walked, the money, split by
+// reason (each with a plain-words phrase). Drives the Overview funnel callout.
+export interface CompetitorLosses {
+  count: number;
+  value: number;
+  reasons: { reason: string; phrase: string; count: number; value: number }[];
 }
 
 export interface RepRow {
@@ -189,6 +198,10 @@ export interface RepRow {
   role: string;
   leads: number;
   delivered: number;
+  ordered: number;
+  // "sale" = delivered + ordered — the conversion numerator, one rule app-wide.
+  sold: number;
+  contacted: number;
   conversion: number;
   revenue: number;
   active: number;
@@ -215,6 +228,9 @@ export interface Bottleneck {
   rep: string;
   branch: string;
   idle_days: number;
+  // Days since the order was placed — only meaningful for delivery-category rows,
+  // where the UI reads it as "Ordered — waiting N days for delivery".
+  days_since_order: number;
   health: number;
   category: BottleneckCategory;
   next_best_action: string;
@@ -235,6 +251,7 @@ export interface BranchDetail {
   forecast: Forecast;
   pipeline_forecast: PipelineForecast;
   funnel: FunnelStep[];
+  monthly: MonthPoint[];
   model_mix: ModelRow[];
   source_quality: SourceQuality[];
   reps: RepRow[];
@@ -258,11 +275,13 @@ export interface LeaderRow {
   role: string;
   leads: number;
   delivered: number;
+  contacted: number;
   conversion: number;
   revenue: number;
   avg_deal: number;
   active_deals: number;
   cold: number;
+  cold_value: number;
   contact_rate: number;
   avg_response_hours: number;
   needs_coaching: boolean;
@@ -280,6 +299,8 @@ export interface RepDetail {
   kpis: {
     leads: number;
     delivered: number;
+    // "sale" = delivered + ordered (the conversion numerator).
+    sold: number;
     conversion: number;
     revenue: number;
     open_deals: number;
@@ -287,9 +308,17 @@ export interface RepDetail {
     contact_rate: number;
   };
   funnel: FunnelStep[];
+  // Per-month contacted-vs-sold for this rep, for the monthly performance chart.
+  monthly: RepMonthPoint[];
   pipeline: Bottleneck[];
   branch_conversion: number;
   group_conversion: number;
+}
+
+export interface RepMonthPoint {
+  month: string;
+  contacted: number;
+  sold: number;
 }
 
 export interface DeliveryAnalysis {

@@ -61,12 +61,13 @@ def source_quality(leads: list, by: str = "branch") -> list:
 
 # The funnel stages a lost deal can die at, in order, with a plain-English
 # label + one-line description. order_placed losses (rare) fold into the
-# closest-to-money "negotiation" bucket.
+# closest-to-money "negotiation" bucket. Labels read like plain speech ("Died
+# before first contact", not "Never worked") so no manager has to decode them.
 LEAK_STAGES = [
-    ("new", "Never worked", "died before first contact"),
-    ("contacted", "Stalled after contact", "contacted, then went quiet"),
-    ("test_drive", "After test drive", "drove it, didn't buy"),
-    ("negotiation", "In negotiation", "closest to the money"),
+    ("new", "Died before first contact", "leads no one ever called"),
+    ("contacted", "Contacted, then went quiet", "reached, then stalled"),
+    ("test_drive", "Didn't buy after test drive", "drove it, didn't buy"),
+    ("negotiation", "Lost in negotiation", "closest to the money"),
 ]
 _LEAK_KEYS = {k for k, _, _ in LEAK_STAGES}
 
@@ -115,8 +116,40 @@ def revenue_leak(leads: list) -> dict:
 
 
 # Loss reasons that mean we lost the customer to a rival (price/brand), as
-# opposed to the customer simply not buying. Drives the "losing to rivals" card.
+# opposed to the customer simply not buying. Drives the "losing to rivals" card
+# and the Overview funnel callout. Each maps to a plain-words phrase.
 _COMPETITOR_REASONS = {"Better offer elsewhere", "Chose competitor brand"}
+_COMPETITOR_PHRASE = {
+    "Better offer elsewhere": "found a better price elsewhere",
+    "Chose competitor brand": "picked another brand",
+}
+
+
+def competitor_losses(leads: list) -> dict:
+    """Customers lost to a rival (price/brand), with how many walked and the
+    money that walked with them — split by reason. Shared by the Insights
+    "losing to rivals" signal and the Overview funnel callout so both agree."""
+    comp = [l for l in leads if l["status"] == "lost" and l.get("lost_reason") in _COMPETITOR_REASONS]
+    count = len(comp)
+    value = sum(l.get("deal_value", 0) for l in comp)
+    by = defaultdict(lambda: {"count": 0, "value": 0})
+    for l in comp:
+        b = by[l["lost_reason"]]
+        b["count"] += 1
+        b["value"] += l.get("deal_value", 0)
+    reasons = sorted(
+        (
+            {
+                "reason": r,
+                "phrase": _COMPETITOR_PHRASE.get(r, r.lower()),
+                "count": v["count"],
+                "value": v["value"],
+            }
+            for r, v in by.items()
+        ),
+        key=lambda x: -x["value"],
+    )
+    return {"count": count, "value": value, "reasons": reasons}
 
 
 def signals(leads: list, deliveries: list, branch_health: list = None,
@@ -135,15 +168,14 @@ def signals(leads: list, deliveries: list, branch_health: list = None,
     if never and never_lost:
         loss_rate = len(never_lost) / len(never)
         nv = sum(l.get("deal_value", 0) for l in never_lost)
-        share = nv / total_lost_value if total_lost_value else 0
         out.append({
             "severity": "critical",
             "tag": "Biggest lever",
             "value": str(len(never)),
             "unit": "leads never called",
-            "verdict": (f"{loss_rate * 100:.0f}% of them were lost — that's {_cr(nv)}, "
-                        f"{share * 100:.0f}% of all lost pipeline."),
-            "action": "Enforce a same-day first-touch rule at every branch.",
+            "verdict": (f"{len(never)} leads were never called. {len(never_lost)} of them "
+                        f"({loss_rate * 100:.0f}%) were lost — {_cr(nv)} of business gone."),
+            "action": "Make every branch call a new lead the same day it comes in.",
         })
 
     # 2) A single branch dragging the group down (all-branches view only).
@@ -159,9 +191,10 @@ def signals(leads: list, deliveries: list, branch_health: list = None,
                     "tag": "One branch is dragging",
                     "value": f"{worst['conversion'] * 100:.0f}%",
                     "unit": f"{worst['name']} conversion",
-                    "verdict": (f"Every other branch converts {lo * 100:.0f}-{hi * 100:.0f}%. "
-                                f"This is a branch problem, not the market."),
-                    "action": f"Manager review at {worst['name']} this week.",
+                    "verdict": (f"{worst['name']} turns just {worst['conversion'] * 100:.0f}% of its leads "
+                                f"into sales; every other branch does {lo * 100:.0f}–{hi * 100:.0f}%. "
+                                f"It's a branch problem, not the market."),
+                    "action": f"Sit with the {worst['name']} manager this week and find out why.",
                 })
 
     # 3) Genuine momentum — latest month is the best in range and still rising.
@@ -175,26 +208,29 @@ def signals(leads: list, deliveries: list, branch_health: list = None,
                 "tag": "Working — keep it",
                 "value": str(cur["delivered"]),
                 "unit": f"cars in {_month_label(cur['month'])}",
-                "verdict": (f"Best month in range, up from {prev['delivered']} in "
-                            f"{_month_label(prev['month'])}. Momentum is genuine."),
-                "action": "Replicate this month's playbook into the next quarter.",
+                "verdict": (f"{cur['delivered']} cars sold in {_month_label(cur['month'])} — up from "
+                            f"{prev['delivered']} in {_month_label(prev['month'])}. Sales are climbing, "
+                            f"and the jump is real."),
+                "action": "Do more of what worked this month, next quarter.",
             })
 
     # 4) Revenue lost to rivals (price/brand) — a pricing & finance-desk problem.
-    comp = [l for l in lost if l.get("lost_reason") in _COMPETITOR_REASONS]
-    if comp:
-        cv = sum(l.get("deal_value", 0) for l in comp)
-        by = Counter()
-        for l in comp:
-            by[l["lost_reason"]] += l.get("deal_value", 0)
-        parts = ", ".join(f"{_cr(v)} “{r.lower()}”" for r, v in by.most_common())
+    #    Say it as people + money, in plain words: how many customers walked, why,
+    #    and how much walked with them.
+    comp = competitor_losses(leads)
+    if comp["count"]:
+        parts = "; ".join(
+            f"{r['count']} {r['phrase']} ({_cr(r['value'])})" for r in comp["reasons"]
+        )
         out.append({
             "severity": "critical",
             "tag": "Losing to rivals",
-            "value": _cr(cv),
+            "value": _cr(comp["value"]),
             "unit": "lost to competitors",
-            "verdict": f"Driven by {parts}.",
-            "action": "Pricing & finance-desk review on live deals.",
+            # The ₹ total is already the card's headline number, so the verdict
+            # leads with the people count, then the breakdown, then the total.
+            "verdict": f"{comp['count']} customers went to a rival: {parts} — {_cr(comp['value'])} in total.",
+            "action": "Have the finance desk review pricing on the deals still open.",
         })
 
     return out

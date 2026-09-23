@@ -62,7 +62,7 @@ export function Sidebar() {
         </div>
 
         <nav className="flex flex-col gap-0.5">
-          {navForRole(view.role).map((n) => {
+          {navForRole(view.user_role).map((n) => {
             const active = n.exact ? path === '/' : path.startsWith(n.href);
             const Icon = n.icon;
             return (
@@ -97,7 +97,7 @@ export function Sidebar() {
             <span className="dp-side-label min-w-0 leading-tight">
               <span className="block truncate text-xs font-semibold">{view.name}</span>
               <span className="block truncate text-2xs text-sidebar-muted">
-                {view.branchName ? `${ROLE_LABEL[view.role]} · ${view.branchName}` : ROLE_LABEL[view.role]}
+                {view.branch_name ? `${ROLE_LABEL[view.user_role]} · ${view.branch_name}` : ROLE_LABEL[view.user_role]}
               </span>
             </span>
           </div>

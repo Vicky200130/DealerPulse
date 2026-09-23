@@ -50,7 +50,7 @@ export default function RepsPage() {
           }}
           options={[
             { label: 'Revenue', value: 'revenue' },
-            { label: 'Units', value: 'delivered' },
+            { label: 'Delivered', value: 'delivered' },
             { label: 'Avg deal', value: 'avg_deal' },
           ]}
         />
@@ -93,6 +93,10 @@ export default function RepsPage() {
               rows={rows}
               getKey={(r) => r.id}
               rowHref={(r) => `/reps/${r.id}`}
+              // The leaderboard has the width, so every metric gets its own column
+              // (unlike the narrow branch-detail reps panel, which stacks them).
+              // "Delivered" = cars handed over; "Conv." counts became-a-sale
+              // (delivered + ordered), so the two differ by not-yet-delivered orders.
               columns={[
                 { key: 'rank', header: '#', render: (r) => <span className="font-mono text-faint">{rows.indexOf(r) + 1}</span> },
                 {
@@ -108,27 +112,22 @@ export default function RepsPage() {
                     </div>
                   ),
                 },
-                { key: 'delivered', header: 'Units', align: 'right', sortable: true, sortValue: (r) => r.delivered, render: (r) => <span className="font-mono">{r.delivered}</span> },
+                { key: 'leads', header: 'Leads', align: 'right', sortable: true, sortValue: (r) => r.leads, render: (r) => <span className="font-mono text-muted">{r.leads}</span> },
+                { key: 'delivered', header: 'Delivered', align: 'right', sortable: true, sortValue: (r) => r.delivered, render: (r) => <span className="font-mono">{r.delivered}</span> },
                 {
-                  key: 'contact_rate',
+                  key: 'contacted',
                   header: 'Contacted',
                   align: 'right',
                   sortable: true,
-                  sortValue: (r) => r.contact_rate,
-                  render: (r) => <span className={cn('font-mono', r.contact_rate < 0.65 ? 'font-semibold text-danger' : 'text-muted')}>{pct(r.contact_rate)}</span>,
-                },
-                {
-                  key: 'avg_response_hours',
-                  header: 'Response',
-                  align: 'right',
-                  sortable: true,
-                  sortValue: (r) => r.avg_response_hours,
-                  render: (r) => <span className="font-mono text-muted">{Math.round(r.avg_response_hours)}h</span>,
+                  sortValue: (r) => r.contacted,
+                  render: (r) => <span className={cn('font-mono', r.contact_rate < 0.65 ? 'text-danger' : 'text-muted')}>{r.contacted}</span>,
                 },
                 {
                   key: 'active_deals',
                   header: 'Active',
                   align: 'right',
+                  sortable: true,
+                  sortValue: (r) => r.active_deals,
                   render: (r) =>
                     r.overloaded ? (
                       <Badge tone="warning" mono>
@@ -138,7 +137,32 @@ export default function RepsPage() {
                       <span className="font-mono">{r.active_deals}</span>
                     ),
                 },
+                { key: 'conversion', header: 'Conv.', align: 'right', sortable: true, sortValue: (r) => r.conversion, render: (r) => <span className="font-mono">{pct(r.conversion)}</span> },
+                {
+                  key: 'avg_response_hours',
+                  header: 'Resp.',
+                  align: 'right',
+                  sortable: true,
+                  sortValue: (r) => r.avg_response_hours,
+                  render: (r) => <span className="font-mono text-muted">{Math.round(r.avg_response_hours)}h</span>,
+                },
+                {
+                  key: 'cold',
+                  header: 'Cold',
+                  align: 'right',
+                  sortable: true,
+                  sortValue: (r) => r.cold,
+                  render: (r) => (r.cold > 0 ? <Badge tone="warning" mono>{r.cold}</Badge> : <span className="font-mono text-faint">0</span>),
+                },
                 { key: 'revenue', header: 'Revenue', align: 'right', sortable: true, sortValue: (r) => r.revenue, render: (r) => <span className="font-mono font-semibold">{formatINR(r.revenue)}</span> },
+                {
+                  key: 'cold_value',
+                  header: 'At risk',
+                  align: 'right',
+                  sortable: true,
+                  sortValue: (r) => r.cold_value,
+                  render: (r) => (r.cold_value > 0 ? <span className="font-mono text-warning">{formatINR(r.cold_value)}</span> : <span className="font-mono text-faint">—</span>),
+                },
                 {
                   key: 'go',
                   header: '',

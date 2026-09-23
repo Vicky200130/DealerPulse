@@ -23,12 +23,15 @@ export function ReasonBars({
   return (
     <div className="flex flex-col gap-2.5">
       {items.map((it, i) => (
-        <div key={it.label} style={{ animationDelay: `${i * 45}ms` }} className="dp-rise grid grid-cols-[132px_1fr_32px] sm:grid-cols-[180px_1fr_44px] items-center gap-2.5 text-xs">
+        // The value column is content-sized (auto) so amounts like "₹46.2 Cr"
+        // sit on one line right next to the bar, instead of wrapping in a
+        // too-narrow fixed column.
+        <div key={it.label} style={{ animationDelay: `${i * 45}ms` }} className="dp-rise grid grid-cols-[132px_1fr_auto] sm:grid-cols-[180px_1fr_auto] items-center gap-2.5 text-xs">
           <span title={it.title ?? it.label} className="text-muted leading-snug break-words">{it.label}</span>
           <div className="h-2.5 overflow-hidden rounded-pill bg-surface-2">
             <div className={cn('h-full rounded-pill', bar)} style={{ width: `${(it.value / max) * 100}%` }} />
           </div>
-          <span className="text-right font-mono font-semibold">{it.display ?? it.value}</span>
+          <span className="whitespace-nowrap text-right font-mono font-semibold">{it.display ?? it.value}</span>
         </div>
       ))}
     </div>
